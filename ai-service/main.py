@@ -1,11 +1,3 @@
-"""
-FastAPI inference server for the AI forecasting service.
-
-Endpoints:
-    GET  /health        — Liveness check
-    POST /predict       — Train on provided history + return predictions
-"""
-
 import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -19,11 +11,8 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="InfuraSaito AI Forecasting Service", version="0.1.0")
 
-# Single global model instance — no versioning in MVP
 forecast_model = ForecastModel()
 
-
-# — Request/Response schemas —
 
 class DataPoint(BaseModel):
     ds: str = Field(..., description="ISO 8601 timestamp")
@@ -53,8 +42,6 @@ class HealthResponse(BaseModel):
     status: str
     model_trained: bool
 
-
-# — Endpoints —
 
 @app.get("/health", response_model=HealthResponse)
 def health():

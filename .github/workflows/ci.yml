@@ -28,10 +28,7 @@ jobs:
 
     - name: Run Setup and Integration Test
       run: |
-        # Make script executable
         chmod +x ./clean_setup.sh
-        
-        # Run the full setup and test script
         ./clean_setup.sh
 
     - name: Print Logs on Failure

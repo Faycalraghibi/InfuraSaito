@@ -10,19 +10,17 @@ import (
 	"time"
 )
 
-// Minimal struct to parse Prometheus HTTP API response
 type PromResponse struct {
 	Status string `json:"status"`
 	Data   struct {
 		ResultType string `json:"resultType"`
 		Result     []struct {
-			Value  []interface{}   `json:"value"` // For instant queries
-			Values [][]interface{} `json:"values"` // For range queries
+			Value  []interface{}   `json:"value"`
+			Values [][]interface{} `json:"values"`
 		} `json:"result"`
 	} `json:"data"`
 }
 
-// queryPrometheusRange runs a PromQL range query and returns a list of DataPoints
 func queryPrometheusRange(query string, start, end time.Time, step string) ([]DataPoint, error) {
 	apiQuery := fmt.Sprintf("%s/api/v1/query_range?query=%s&start=%d&end=%d&step=%s",
 		prometheusURL, url.QueryEscape(query), start.Unix(), end.Unix(), step)

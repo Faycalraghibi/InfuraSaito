@@ -29,7 +29,6 @@ func init() {
 	}
 }
 
-// callForecastModel sends historical data to Prophet and returns the prediction JSON bytes
 func callForecastModel(metric string, history []DataPoint, horizonMin int) ([]byte, error) {
 	reqBody := PredictRequest{
 		MetricName:     metric,
