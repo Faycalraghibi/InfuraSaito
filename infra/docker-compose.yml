@@ -1,0 +1,10 @@
+services:
+  node-exporter:
+    image: prom/node-exporter:latest
+    ports: ["9100:9100"]
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    volumes:
+      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports: ["9090:9090"]
