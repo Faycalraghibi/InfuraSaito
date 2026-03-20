@@ -7,7 +7,6 @@
 [![Docker](https://img.shields.io/badge/Docker-24.x-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Prometheus](https://img.shields.io/badge/Prometheus-2.51+-E6522C.svg?logo=prometheus&logoColor=white)](https://prometheus.io/)
-[![CI Status](https://github.com/Faycalraghibi/InfuraSaito/actions/workflows/ci.yml/badge.svg)](https://github.com/Faycalraghibi/InfuraSaito/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 </div>
