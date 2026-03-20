@@ -45,8 +45,12 @@ func queryPrometheusRange(query string, start, end time.Time, step string) ([]Da
 		return nil, err
 	}
 
-	if promResp.Status != "success" || len(promResp.Data.Result) == 0 {
-		return nil, fmt.Errorf("no data returned from Prometheus")
+	if promResp.Status != "success" {
+		return nil, fmt.Errorf("Prometheus query failed: status %s", promResp.Status)
+	}
+
+	if len(promResp.Data.Result) == 0 {
+		return []DataPoint{}, nil
 	}
 
 	var dataPoints []DataPoint
