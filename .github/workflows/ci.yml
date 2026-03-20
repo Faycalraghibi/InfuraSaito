@@ -35,11 +35,11 @@ jobs:
       if: failure()
       run: |
         echo "=== GO API LOGS ==="
-        docker-compose logs go-api || true
+        docker compose logs go-api || true
         echo "=== AI SERVICE LOGS ==="
-        docker-compose logs ai-service || true
+        docker compose logs ai-service || true
         echo "=== PROMETHEUS LOGS ==="
-        docker-compose logs prometheus || true
+        docker compose logs prometheus || true
 
     - name: Teardown
       if: always()

@@ -6,10 +6,10 @@ echo "Starting AI Forecasting Infrastructure"
 echo "=========================================="
 
 echo "Cleaning up old containers and volumes..."
-docker-compose down -v --remove-orphans || true
+docker compose down -v --remove-orphans || true
 
 echo "Building and starting Docker Compose stack..."
-docker-compose up -d --build
+docker compose up -d --build
 
 echo "Waiting for Go API and AI Service to be ready..."
 MAX_RETRIES=30
@@ -30,9 +30,9 @@ done
 if [ "$API_READY" = false ]; then
     echo "ERROR: Services failed to start within the timeout period."
     echo "--- Go API Logs ---"
-    docker-compose logs go-api
+    docker compose logs go-api
     echo "--- AI Service Logs ---"
-    docker-compose logs ai-service
+    docker compose logs ai-service
     exit 1
 fi
 
@@ -50,5 +50,5 @@ fi
 
 echo "=========================================="
 echo "Setup complete! The system is running."
-echo "Use 'docker-compose down -v' to clean up when you're done."
+echo "Use 'docker compose down -v' to clean up when you're done."
 echo "=========================================="

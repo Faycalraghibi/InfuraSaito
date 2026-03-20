@@ -1,52 +1,181 @@
-# InfuraSaito AI Infrastructure Forecaster
+# InfuraSaito
 
-This project is a scalable, cloud-agnostic Minimum Viable Product (MVP) for an AI-powered infrastructure forecasting system. It collects real-time infrastructure metrics, stores them locally, and uses an AI model to predict future resource usage.
+InfuraSaito is a proof-of-concept AI-driven monitoring and forecasting system for Kubernetes clusters. It combines Prometheus for metrics collection, a Go API for orchestration, and a Python service using Facebook Prophet for time-series forecasting.
 
 ## Architecture
 
-The system is containerized and composed of four primary services orchestrated via Docker Compose:
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Kubernetes Cluster                                                         │
+│                                                                             │
+│  ┌─────────────────────┐   ┌─────────────────────┐   ┌─────────────────────┐ │
+│  │  Prometheus         │   │  Grafana            │   │  Alertmanager       │ │
+│  │  (Metrics + Alerting) │   │  (Dashboards)       │   │  (Alert Routing)    │ │
+│  └─────────────────────┘   └─────────────────────┘   └─────────────────────┘ │
+│                                                                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │  InfuraSaito Backend (Go)                                             │ │
+│  │                                                                       │ │
+│  │  ┌─────────────────────┐   ┌─────────────────────┐   ┌─────────────────┐ │ │
+│  │  │  Current Metrics    │   │  Forecast Handler   │   │  AI Service     │ │ │
+│  │  │  (Prometheus)       │   │  (Orchestration)    │   │  (Prophet)      │ │ │
+│  │  └─────────────────────┘   └─────────────────────┘   └─────────────────┘ │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-1. **Node Exporter (Port 9100):** Exposes raw CPU and hardware metrics from the host machine.
-2. **Prometheus (Port 9090):** Time-series database that scrapes and stores metrics from the Node Exporter.
-3. **Python AI Service (Port 5000):** A FastAPI microservice that wraps Facebook Prophet. It receives historical time-series data and returns predicted future usage bands (with confidence intervals).
-4. **Go API Orchestrator (Port 8080):** The main entry point. It handles incoming forecast requests, queries historical data from Prometheus, proxies the data to the Python AI service, and returns the final JSON response to the user. Includes fallback logic for cold starts (when insufficient historical data exists).
+## Components
 
-## Prerequisites
+### 1. Prometheus
+- **Role**: Collects metrics from Kubernetes nodes and pods
+- **Configuration**: `prometheus.yml`
+- **Key Metrics**:
+  - `node_cpu_seconds_total`: CPU usage across all nodes
+  - `container_cpu_usage_seconds_total`: CPU usage per container
+  - `container_memory_working_set_bytes`: Memory usage per container
 
-- Docker
-- Docker Compose
-- Git
-- Open ports: `8080`, `5000`, `9090`, `9100`
+### 2. Go API
+- **Role**: Backend orchestration service
+- **Endpoints**:
+  - `GET /healthz`: Health check
+  - `GET /api/v1/metrics/current`: Get current metrics from Prometheus
+  - `GET /api/v1/forecast`: Get AI-generated forecast
+- **Dependencies**:
+  - `github.com/prometheus/client_golang/api`: Prometheus client
+  - `github.com/joho/godotenv`: Environment variable management
 
-## Installation and Execution
+### 3. AI Service
+- **Role**: Time-series forecasting using Facebook Prophet
+- **Endpoints**:
+  - `GET /health`: Health check
+  - `POST /predict`: Train model on historical data and return forecast
+- **Dependencies**:
+  - `fastapi`: Web framework
+  - `prophet`: Forecasting library
+  - `pandas`, `numpy`: Data manipulation
 
-The repository includes an automated setup script that handles building the images, waiting for health checks, and running an integration test.
+## Deployment
+
+### Prerequisites
+- Docker and Docker Compose
+- Kubernetes cluster (Minikube, Kind, or cloud-based)
+- Helm (optional, for easier management)
+
+### Quick Start (Docker Compose)
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd InfuraSaito
+   ```
+
+2. **Start the stack**
+   ```bash
+   docker compose up -d
+   ```
+
+3. **Verify deployment**
+   ```bash
+   # Check services are running
+   docker compose ps
+   
+   # Check logs
+   docker compose logs go-api
+   docker compose logs ai-service
+   docker compose logs prometheus
+   
+   # Test health endpoints
+   curl http://localhost:8080/healthz
+   curl http://localhost:5000/health
+   ```
+
+### Kubernetes Deployment
+
+1. **Install Prometheus Operator**
+   ```bash
+   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+   helm repo update
+   helm install prometheus prometheus-community/kube-prometheus-stack
+   ```
+
+2. **Deploy Go API**
+   ```bash
+   kubectl apply -f k8s/go-api-deployment.yaml
+   kubectl apply -f k8s/go-api-service.yaml
+   ```
+
+3. **Deploy AI Service**
+   ```bash
+   kubectl apply -f k8s/ai-service-deployment.yaml
+   kubectl apply -f k8s/ai-service-service.yaml
+   ```
+
+4. **Configure Prometheus**
+   - Create PrometheusServiceMonitor CRD
+   - Add scrape config for Go API
+
+## Usage
+
+### Get Current Metrics
+```bash
+curl http://localhost:8080/api/v1/metrics/current
+```
+
+### Get AI Forecast
+```bash
+curl http://localhost:8080/api/v1/forecast?horizon_minutes=60
+```
+
+### Test AI Service Directly
+```bash
+# Generate synthetic data
+python ai-service/test_predict.py
+```
+
+## Configuration
+
+### Environment Variables
+
+**Go API**:
+- `PROMETHEUS_URL`: Prometheus endpoint (default: `http://localhost:9090`)
+- `PORT`: API port (default: `8080`)
+
+**AI Service**:
+- `PORT`: Service port (default: `5000`)
+
+### Prometheus Configuration
+
+Edit `prometheus.yml` to:
+- Add scrape targets for Go API
+- Configure alerting rules
+- Adjust scrape intervals
+
+## Development
+
+### Adding New Metrics
+
+1. **Update Prometheus**
+   - Add metric to `prometheus.yml`
+   - Create ServiceMonitor CRD for Kubernetes
+
+2. **Update Go API**
+   - Add query to `handlers.go`
+   - Update `currentMetricsHandler` if needed
+
+3. **Update AI Service**
+   - Add new Prophet model if needed
+   - Update `model.py` with Prophet configuration
+
+### Testing
 
 ```bash
-chmod +x clean_setup.sh
+# Run AI service tests
+python -m pytest ai-service/tests/
+
+# Run integration tests
 ./clean_setup.sh
 ```
 
-Alternatively, you can manually start the services using Docker Compose:
+## License
 
-```bash
-docker-compose up -d --build
-```
-
-*Note: The first build of the Python AI Service container may take several minutes due to the compilation of the Prophet C++ CmdStan backend.*
-
-## API Endpoints
-
-### Go API (Port 8080)
-
-- **GET `/healthz`**: Liveness check.
-- **GET `/api/v1/forecast?metric=cpu&horizon_minutes=60`**: Fetches the last 14 days of CPU metrics from Prometheus, runs it through the Prophet model, and returns a 60-minute prediction.
-
-### Python AI Service (Port 5000)
-
-- **GET `/health`**: Internal liveness check.
-- **POST `/predict`**: Internal endpoint used by the Go API to pass raw historical JSON and receive JSON predictions.
-
-## Continuous Integration
-
-A GitHub Actions pipeline (`.github/workflows/ci.yml`) is configured to run on every push and pull request to the `main` branch. It utilizes Docker layer caching to optimize build times and automatically executes the `clean_setup.sh` integration testing flow.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
