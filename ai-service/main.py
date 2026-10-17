@@ -11,7 +11,9 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="InfuraSaito AI Forecasting Service", version="0.1.0")
 
-forecast_model = ForecastModel()
+# Set once any request has trained successfully; reported by /health.
+# Each request builds its own ForecastModel so concurrent calls never share state.
+model_has_trained = False
 
 
 class DataPoint(BaseModel):
@@ -45,7 +47,7 @@ class HealthResponse(BaseModel):
 
 @app.get("/health", response_model=HealthResponse)
 def health():
-    return HealthResponse(status="ok", model_trained=forecast_model.is_trained)
+    return HealthResponse(status="ok", model_trained=model_has_trained)
 
 
 @app.post("/predict", response_model=PredictResponse)
@@ -56,13 +58,17 @@ def predict(req: PredictRequest):
     For MVP, the model is retrained on every call. This is simple and correct
     for a demo. In production, training and inference would be decoupled.
     """
+    global model_has_trained
+
     if len(req.history) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 data points in history")
 
     try:
         history_dicts = [{"ds": dp.ds, "y": dp.y} for dp in req.history]
+        forecast_model = ForecastModel()
         forecast_model.train(history_dicts)
         predictions = forecast_model.predict(req.horizon_minutes)
+        model_has_trained = True
     except Exception as e:
         logger.error("Prediction failed: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
