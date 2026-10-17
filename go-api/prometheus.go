@@ -78,7 +78,7 @@ func queryPrometheusRange(query string, start, end time.Time, step string) ([]Da
 // queryPrometheus runs a PromQL query and returns the first float value
 func queryPrometheus(query string) (float64, error) {
 	apiQuery := fmt.Sprintf("%s/api/v1/query?query=%s", prometheusURL, url.QueryEscape(query))
-	
+
 	resp, err := http.Get(apiQuery)
 	if err != nil {
 		return 0, err
