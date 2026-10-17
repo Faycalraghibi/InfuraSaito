@@ -57,6 +57,37 @@ else
     exit 1
 fi
 
+echo "Waiting for AI Service..."
+for attempt in $(seq 1 24); do
+    if curl -sf http://localhost:5000/health > /dev/null; then
+        break
+    fi
+    sleep 5
+done
+
+echo "Running AI Service Test (real Prophet forecast on UTC history)..."
+python3 -c '
+import json, math
+from datetime import datetime, timedelta, timezone
+start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+history = [
+    {"ds": (start + timedelta(minutes=5 * i)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+     "y": 30 + 10 * math.sin(2 * math.pi * i / 288)}
+    for i in range(3 * 288)
+]
+print(json.dumps({"metric_name": "cpu", "history": history, "horizon_minutes": 30}))
+' > /tmp/predict_payload.json
+
+AI_RESPONSE=$(curl -s -X POST -H "Content-Type: application/json"     --data-binary @/tmp/predict_payload.json http://localhost:5000/predict)
+
+if echo "$AI_RESPONSE" | grep -q '"predictions":\[{'; then
+    echo "AI Service Test Passed!"
+else
+    echo "AI Service Test Failed! Got:"
+    echo "$AI_RESPONSE"
+    exit 1
+fi
+
 echo "=========================================="
 echo "Setup complete! The system is running."
 echo "Use 'docker compose down -v' to clean up when you're done."
