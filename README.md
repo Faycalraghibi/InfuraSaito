@@ -2,11 +2,11 @@
 
 # InfuraSaito
 
-[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![Go](https://img.shields.io/badge/Go-1.22+-00ADD8.svg?logo=go&logoColor=white)](https://go.dev/)
-[![Docker](https://img.shields.io/badge/Docker-24.x-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Docker](https://img.shields.io/badge/Docker%20Compose-v2-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Prometheus](https://img.shields.io/badge/Prometheus-2.51+-E6522C.svg?logo=prometheus&logoColor=white)](https://prometheus.io/)
+[![Prometheus](https://img.shields.io/badge/Prometheus-v2.51.0-E6522C.svg?logo=prometheus&logoColor=white)](https://prometheus.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 </div>
@@ -45,7 +45,7 @@ Once the stack is running, traffic is routed through the Go API on port `8080`.
 ### `GET /api/v1/forecast`
 Fetches historical metric data from Prometheus, passes it to the AI service, and returns a time-series forecast.
 * **Parameters**: 
-  * `metric` (default: `cpu`) 
+  * `metric` (default: `cpu`): `cpu` or `memory`. Other values return `400`. Returns `503` if Node Exporter is not being scraped.
   * `horizon_minutes` (default: `60`)
 * **Example**: `curl "http://localhost:8080/api/v1/forecast?metric=cpu&horizon_minutes=60"`
 

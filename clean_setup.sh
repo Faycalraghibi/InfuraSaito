@@ -36,10 +36,19 @@ if [ "$API_READY" = false ]; then
     exit 1
 fi
 
-echo "Running Integration Test (Cold Start scenario)..."
-RESPONSE=$(curl -s "http://localhost:8080/api/v1/forecast?metric=cpu&horizon_minutes=60")
+echo "Running Integration Test..."
+# Retry while Prometheus completes its first scrape (the API returns 503 until then).
+RESPONSE=""
+for attempt in $(seq 1 12); do
+    if RESPONSE=$(curl -sf "http://localhost:8080/api/v1/forecast?metric=cpu&horizon_minutes=60"); then
+        break
+    fi
+    echo "   ...forecast not ready yet (attempt $attempt/12)"
+    RESPONSE=""
+    sleep 5
+done
 
-if echo "$RESPONSE" | grep -q '"metric":'; then
+if echo "$RESPONSE" | grep -q '"metric_name":'; then
     echo "Integration Test Passed! Full response:"
     echo "$RESPONSE" | jq . || echo "$RESPONSE"
 else

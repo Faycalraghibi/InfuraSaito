@@ -1,0 +1,16 @@
+# CI-only override: persists the image build cache in the GitHub Actions cache.
+# Used via COMPOSE_FILE=docker-compose.yml:docker-compose.ci.yml in ci.yml.
+services:
+  ai-service:
+    build:
+      cache_from:
+        - type=gha,scope=ai-service
+      cache_to:
+        - type=gha,scope=ai-service,mode=max
+
+  go-api:
+    build:
+      cache_from:
+        - type=gha,scope=go-api
+      cache_to:
+        - type=gha,scope=go-api,mode=max
