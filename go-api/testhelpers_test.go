@@ -5,9 +5,17 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
+
+// TestMain points the AI client at an unreachable address so a test that forgets
+// fakeAIService can never hit a real AI service running on localhost:5000.
+func TestMain(m *testing.M) {
+	aiServiceURL = "http://127.0.0.1:0"
+	os.Exit(m.Run())
+}
 
 const promEmptyVector = `{"status":"success","data":{"resultType":"vector","result":[]}}`
 
@@ -73,6 +81,20 @@ func fakeAIService(t *testing.T, status int, body string) *PredictRequest {
 	aiServiceURL = srv.URL
 	t.Cleanup(func() { aiServiceURL = old })
 	return got
+}
+
+// failIfAIServiceCalled points aiServiceURL at a server that fails the test if it is called.
+func failIfAIServiceCalled(t *testing.T) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("AI service should not be called, got %s %s", r.Method, r.URL.Path)
+		http.Error(w, "unexpected call", http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	old := aiServiceURL
+	aiServiceURL = srv.URL
+	t.Cleanup(func() { aiServiceURL = old })
 }
 
 // getForecast calls forecastHandler with the given raw query string.
