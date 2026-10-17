@@ -11,7 +11,8 @@ class ForecastModel:
 
     def train(self, history: list[dict]) -> dict:
         df = pd.DataFrame(history)
-        df["ds"] = pd.to_datetime(df["ds"])
+        # Prophet rejects timezone-aware timestamps: parse as UTC, then drop the zone.
+        df["ds"] = pd.to_datetime(df["ds"], utc=True).dt.tz_localize(None)
         df["y"] = df["y"].astype(float)
 
         df = df.dropna(subset=["ds", "y"])
@@ -57,7 +58,7 @@ class ForecastModel:
         for _, row in future_forecast.iterrows():
             predictions.append(
                 {
-                    "time": row["ds"].isoformat(),
+                    "time": row["ds"].tz_localize("UTC").isoformat(),
                     "value": round(float(row["yhat"]), 2),
                     "lower": round(float(row["yhat_lower"]), 2),
                     "upper": round(float(row["yhat_upper"]), 2),
