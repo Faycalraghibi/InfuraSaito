@@ -57,6 +57,16 @@ Returns the instant rolling average of the specified infrastructure metric.
 Liveness probe to verify the Go orchestration API is successfully running.
 * **Example**: `curl http://localhost:8080/healthz`
 
+## Running Tests
+
+```bash
+# Go unit tests
+cd go-api && go test ./...
+
+# Python unit tests (Python 3.11)
+cd ai-service && pip install -r requirements.txt -r requirements-dev.txt && pytest
+```
+
 ## Continuous Integration
 
-A GitHub Actions pipeline is configured to validate the integration flow on every push to the `main` branch. The pipeline automatically uses Docker layer caching to accelerate subsequent testing builds.
+GitHub Actions runs Go and Python unit tests on every push and pull request to `main`, then brings up the full Docker stack and runs integration checks (API cold start and a real Prophet forecast). Image builds are cached in the GitHub Actions cache.
