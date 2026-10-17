@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+
+# LaTeX build output
+*.aux
+*.log
+*.out
+*.toc
+report.pdf
+_minted*/
+
+# Technical report (kept local, not tracked)
+report.tex

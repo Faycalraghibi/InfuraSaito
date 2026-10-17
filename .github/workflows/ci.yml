@@ -17,16 +17,14 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    # To speed up the CI, we cache the heavy Python Prophet+CmdStan Docker layers
-    - name: Cache Docker layers
-      uses: actions/cache@v3
-      with:
-        path: /tmp/.buildx-cache
-        key: ${{ runner.os }}-buildx-${{ github.sha }}
-        restore-keys: |
-          ${{ runner.os }}-buildx-
+    # Exposes the Actions cache runtime token so BuildKit can use type=gha caching,
+    # which docker-compose.ci.yml uses for the heavy Prophet+CmdStan image layers.
+    - name: Expose GitHub Actions runtime
+      uses: crazy-max/ghaction-github-runtime@v3
 
     - name: Run Setup and Integration Test
+      env:
+        COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
       run: |
         chmod +x ./clean_setup.sh
         ./clean_setup.sh
