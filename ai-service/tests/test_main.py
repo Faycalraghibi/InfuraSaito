@@ -1,11 +1,16 @@
+import pytest
 from fastapi.testclient import TestClient
 
 import main
 
-client = TestClient(main.app)
+
+@pytest.fixture
+def client():
+    with TestClient(main.app) as c:
+        yield c
 
 
-def test_health_before_any_training(monkeypatch):
+def test_health_before_any_training(client, monkeypatch):
     monkeypatch.setattr(main, "model_has_trained", False)
 
     resp = client.get("/health")
@@ -14,7 +19,7 @@ def test_health_before_any_training(monkeypatch):
     assert resp.json() == {"status": "ok", "model_trained": False}
 
 
-def test_predict_rejects_short_history():
+def test_predict_rejects_short_history(client):
     resp = client.post(
         "/predict",
         json={"metric_name": "cpu", "history": [{"ds": "2026-01-01T00:00:00Z", "y": 1}]},
@@ -23,7 +28,7 @@ def test_predict_rejects_short_history():
     assert resp.status_code == 400
 
 
-def test_predict_returns_forecast_for_utc_history(monkeypatch, history):
+def test_predict_returns_forecast_for_utc_history(client, monkeypatch, history):
     monkeypatch.setattr(main, "model_has_trained", False)
 
     resp = client.post(

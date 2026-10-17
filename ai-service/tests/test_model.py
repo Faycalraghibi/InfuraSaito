@@ -1,3 +1,5 @@
+from datetime import timedelta, timezone
+
 import pandas as pd
 import pytest
 
@@ -33,8 +35,27 @@ def test_predict_returns_only_future_points_in_utc(history):
 
     assert len(preds) == 12  # 60 min / 5 min
     last_seen = pd.Timestamp(history[-1]["ds"])
+    assert pd.Timestamp(preds[0]["time"]) == last_seen + pd.Timedelta("5min")
     for p in preds:
         t = pd.Timestamp(p["time"])
-        assert t.tzinfo is not None, "times must carry a UTC offset"
+        assert t.utcoffset() == pd.Timedelta(0), "times must be UTC"
         assert t > last_seen
         assert p["lower"] <= p["value"] <= p["upper"]
+
+
+def test_train_converts_offsets_to_utc(history):
+    plus_two = timezone(timedelta(hours=2))
+    shifted = [
+        {"ds": pd.Timestamp(p["ds"]).tz_convert(plus_two).isoformat(), "y": p["y"]}
+        for p in history
+    ]
+
+    result = ForecastModel().train(shifted)
+
+    assert result["date_range"]["start"] == "2026-01-01T00:00:00"
+
+
+def test_train_drops_unparseable_timestamps(history):
+    result = ForecastModel().train(history + [{"ds": "not-a-time", "y": 1.0}])
+
+    assert result["data_points"] == len(history)

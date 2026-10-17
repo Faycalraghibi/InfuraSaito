@@ -12,7 +12,8 @@ class ForecastModel:
     def train(self, history: list[dict]) -> dict:
         df = pd.DataFrame(history)
         # Prophet rejects timezone-aware timestamps: parse as UTC, then drop the zone.
-        df["ds"] = pd.to_datetime(df["ds"], utc=True).dt.tz_localize(None)
+        # Unparseable timestamps become NaT and are removed by dropna below.
+        df["ds"] = pd.to_datetime(df["ds"], utc=True, format="ISO8601", errors="coerce").dt.tz_localize(None)
         df["y"] = df["y"].astype(float)
 
         df = df.dropna(subset=["ds", "y"])
