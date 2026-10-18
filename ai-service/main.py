@@ -158,3 +158,49 @@ def forecast(req: ForecastRequest):
         predictions=[PredictionPoint(**p) for p in predictions],
         trained_at=trained_at,
     )
+
+
+class AnomalyRequest(BaseModel):
+    metric_name: str
+    instance: str | None = None
+    history: list[DataPoint] = Field(..., min_length=1, description="Recent data points to check")
+
+
+class AnomalyPoint(BaseModel):
+    time: str
+    value: float
+    expected: float
+    lower: float
+    upper: float
+    deviation: float
+
+
+class AnomalyResponse(BaseModel):
+    metric_name: str
+    instance: str | None = None
+    checked: int
+    anomalies: list[AnomalyPoint]
+    trained_at: str
+
+
+@app.post("/anomalies", response_model=AnomalyResponse)
+def anomalies(req: AnomalyRequest):
+    """Flag points far from the cached model's expected values; 404 when no model is cached."""
+    entry = model_cache.get(req.metric_name, req.instance)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="No trained model for this metric and instance")
+    forecast_model, trained_at = entry
+
+    try:
+        found, checked = forecast_model.detect_anomalies([{"ds": dp.ds, "y": dp.y} for dp in req.history])
+    except Exception as e:
+        logger.error("Anomaly detection failed: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Anomaly detection failed: {str(e)}")
+
+    return AnomalyResponse(
+        metric_name=req.metric_name,
+        instance=req.instance,
+        checked=checked,
+        anomalies=[AnomalyPoint(**a) for a in found],
+        trained_at=trained_at,
+    )

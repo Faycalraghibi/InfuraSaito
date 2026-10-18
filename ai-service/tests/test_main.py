@@ -125,3 +125,32 @@ def test_health_reports_cached_models(client, history):
 
     assert body["cached_models"] == 1
     assert body["model_trained"] is True
+
+
+def test_anomalies_without_trained_model_returns_404(client, history):
+    resp = client.post("/anomalies", json={"metric_name": "cpu", "history": history[-12:]})
+
+    assert resp.status_code == 404
+
+
+def test_anomalies_rejects_empty_history(client):
+    resp = client.post("/anomalies", json={"metric_name": "cpu", "history": []})
+
+    assert resp.status_code == 422
+
+
+def test_anomalies_uses_the_cached_model(client, history):
+    train = client.post("/train", json={"metric_name": "cpu", "instance": "a:9100", "history": history})
+    recent = [dict(p) for p in history[-12:]]
+    recent[5]["y"] += 50
+
+    resp = client.post("/anomalies", json={"metric_name": "cpu", "instance": "a:9100", "history": recent})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["metric_name"] == "cpu"
+    assert body["instance"] == "a:9100"
+    assert body["checked"] == 12
+    assert body["trained_at"] == train.json()["trained_at"]
+    spike_time = recent[5]["ds"].replace("Z", "+00:00")
+    assert spike_time in [a["time"] for a in body["anomalies"]]
