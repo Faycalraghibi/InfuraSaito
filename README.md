@@ -44,7 +44,7 @@ Every service has a healthcheck, and the Go API starts only once Prometheus and 
 
 Once the stack is running, traffic is routed through the Go API on port `8080`.
 
-**Authentication and rate limiting.** When `API_KEY` is set, every `/api/` route requires the header `X-API-Key: <key>` and returns `401` without it; `/healthz` stays open. All `/api/` routes share one rate limit (default 10 requests/s, burst 20); over the limit they return `429` with `Retry-After`.
+**Authentication and rate limiting.** When `API_KEY` is set, every `/api/` route requires the header `X-API-Key: <key>` and returns `401` without it; `/healthz` stays open. All `/api/` routes share one rate limit (default 10 requests/s, burst 20); over the limit they return `429` with `Retry-After`. The limit is global and also counts requests without a valid key, so it slows key guessing but lets any client use up the shared budget; put a per-client limiter or proxy in front for multi-tenant use. When `API_KEY` is set, add `-H "X-API-Key: <key>"` to the examples below.
 
 ```bash
 API_KEY=change-me docker compose up -d --build --wait

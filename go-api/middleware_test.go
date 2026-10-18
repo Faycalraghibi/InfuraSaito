@@ -71,7 +71,7 @@ func TestTokenBucket(t *testing.T) {
 	}
 	for i, s := range steps {
 		now = now.Add(s.advance)
-		if got := b.allow(); got != s.want {
+		if got, _ := b.allow(); got != s.want {
 			t.Fatalf("step %d (advance %s): allow() = %v, want %v", i, s.advance, got, s.want)
 		}
 	}
@@ -92,6 +92,49 @@ func TestRateLimitMiddleware(t *testing.T) {
 	}
 	if second.Code != http.StatusTooManyRequests || second.Header().Get("Retry-After") == "" {
 		t.Errorf("second = %d (Retry-After %q), want 429 with Retry-After", second.Code, second.Header().Get("Retry-After"))
+	}
+}
+
+func TestRateLimitRetryAfterReflectsRefillRate(t *testing.T) {
+	b := newTokenBucket(0.1, 1) // one token every 10s
+	h := withRateLimit(b, okHandler(new(bool)))
+
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	if got := rec.Header().Get("Retry-After"); got != "10" {
+		t.Errorf("Retry-After = %q, want 10", got)
+	}
+}
+
+func TestRouterRateLimitsBeforeCheckingKey(t *testing.T) {
+	router := newRouter("s3cret", newTokenBucket(0.001, 1))
+
+	codes := make([]int, 2)
+	for i := range codes {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/instances", nil)
+		req.Header.Set("X-API-Key", "wrong")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		codes[i] = rec.Code
+	}
+
+	if codes[0] != http.StatusUnauthorized || codes[1] != http.StatusTooManyRequests {
+		t.Errorf("codes = %v, want [401 429]: wrong-key requests must use up the rate limit", codes)
+	}
+}
+
+func TestRouterHealthzBypassesRateLimit(t *testing.T) {
+	router := newRouter("", newTokenBucket(0.001, 1))
+	fakePrometheus(t, "", promEmptyVector)
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/instances", nil))
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("/healthz status = %d after the bucket is empty, want 200", rec.Code)
 	}
 }
 
@@ -117,6 +160,7 @@ func TestRateLimiterFromEnv(t *testing.T) {
 		{"custom", "2.5", "5", false, 2.5, 5},
 		{"zero disables", "0", "", true, 0, 0},
 		{"garbage uses defaults", "fast", "many", false, 10, 20},
+		{"infinity uses default", "Inf", "", false, 10, 20},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

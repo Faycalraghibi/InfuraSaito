@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/subtle"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -44,8 +45,8 @@ func newTokenBucket(rps float64, burst int) *tokenBucket {
 	}
 }
 
-// allow takes a token if one is available.
-func (b *tokenBucket) allow() bool {
+// allow takes a token if one is available; otherwise it reports how long until one is.
+func (b *tokenBucket) allow() (bool, time.Duration) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -53,10 +54,10 @@ func (b *tokenBucket) allow() bool {
 	b.tokens = min(b.burst, b.tokens+now.Sub(b.last).Seconds()*b.rps)
 	b.last = now
 	if b.tokens < 1 {
-		return false
+		return false, time.Duration((1 - b.tokens) / b.rps * float64(time.Second))
 	}
 	b.tokens--
-	return true
+	return true, 0
 }
 
 // withRateLimit answers 429 when the bucket is empty. A nil bucket disables limiting.
@@ -65,8 +66,8 @@ func withRateLimit(b *tokenBucket, next http.Handler) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !b.allow() {
-			w.Header().Set("Retry-After", "1")
+		if ok, wait := b.allow(); !ok {
+			w.Header().Set("Retry-After", strconv.Itoa(max(1, int(math.Ceil(wait.Seconds())))))
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
@@ -79,7 +80,8 @@ func withRateLimit(b *tokenBucket, next http.Handler) http.Handler {
 func rateLimiterFromEnv() *tokenBucket {
 	rps := 10.0
 	if v := os.Getenv("RATE_LIMIT_RPS"); v != "" {
-		if parsed, err := strconv.ParseFloat(v, 64); err == nil && parsed >= 0 {
+		// Reject Inf: Inf*0 is NaN, which would make every request pass.
+		if parsed, err := strconv.ParseFloat(v, 64); err == nil && parsed >= 0 && !math.IsInf(parsed, 0) {
 			rps = parsed
 		} else {
 			log.Printf("invalid RATE_LIMIT_RPS=%q, using %v", v, rps)
