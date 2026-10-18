@@ -8,7 +8,7 @@ RUN go mod download || true
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o forecasting-api .
 
-FROM alpine:latest
+FROM alpine:3.20
 WORKDIR /app
 COPY --from=builder /app/forecasting-api .
 

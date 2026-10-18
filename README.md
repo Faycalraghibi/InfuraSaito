@@ -33,8 +33,10 @@ chmod +x clean_setup.sh
 Alternatively, you can manually start the cluster using Docker Compose v2:
 
 ```bash
-docker compose up -d --build
+docker compose up -d --build --wait
 ```
+
+Every service has a healthcheck, and the Go API starts only once Prometheus and the AI service are healthy. `--wait` returns when the whole stack is healthy.
 
 *Note: Initial build times may take a few minutes as the Python container compiles necessary C++ dependencies for the Prophet modeling backend.*
 
