@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -119,6 +120,7 @@ func getForecast(query string) *httptest.ResponseRecorder {
 func fakeSlowServer(t *testing.T, delay time.Duration) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body) // net/http only notices a disconnect once the body is read
 		select {
 		case <-time.After(delay):
 		case <-r.Context().Done():

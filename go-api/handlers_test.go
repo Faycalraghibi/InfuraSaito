@@ -163,8 +163,14 @@ func TestForecastAIServiceTimeoutReturns502(t *testing.T) {
 	aiServiceURL = fakeSlowServer(t, 5*time.Second)
 	t.Cleanup(func() { aiServiceURL = old })
 
-	if rec := getForecast(""); rec.Code != http.StatusBadGateway {
+	start := time.Now()
+	rec := getForecast("")
+
+	if rec.Code != http.StatusBadGateway {
 		t.Errorf("status = %d, want 502", rec.Code)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("took %s, want the 50ms client timeout to apply", elapsed)
 	}
 }
 
