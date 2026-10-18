@@ -60,7 +60,7 @@ func TestForecastDefaultsToCPUAnd60Minutes(t *testing.T) {
 	}
 }
 
-func TestForecastInvalidHorizonDefaultsTo60(t *testing.T) {
+func TestForecastHorizonParsing(t *testing.T) {
 	tests := []struct {
 		query string
 		want  int
@@ -68,6 +68,8 @@ func TestForecastInvalidHorizonDefaultsTo60(t *testing.T) {
 		{"horizon_minutes=abc", 60},
 		{"horizon_minutes=0", 60},
 		{"horizon_minutes=-5", 60},
+		{"horizon_minutes=1", 1},
+		{"horizon_minutes=10080", 10080},
 	}
 	for _, tc := range tests {
 		t.Run(tc.query, func(t *testing.T) {
@@ -218,6 +220,23 @@ func TestCurrentMetricRejectsUnsupportedMetric(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
+	}
+	if len(calls.queries) != 0 {
+		t.Errorf("Prometheus was queried %d times, want 0", len(calls.queries))
+	}
+}
+
+func TestForecastRejectsHorizonAboveSevenDays(t *testing.T) {
+	failIfAIServiceCalled(t)
+	calls := fakePrometheus(t, promRange(1, 2), promInstant(1))
+
+	rec := getForecast("horizon_minutes=10081")
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "10080") {
+		t.Errorf("body = %q, want it to state the 10080 limit", rec.Body)
 	}
 	if len(calls.queries) != 0 {
 		t.Errorf("Prometheus was queried %d times, want 0", len(calls.queries))

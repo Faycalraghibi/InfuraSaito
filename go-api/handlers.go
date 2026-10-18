@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -25,6 +26,10 @@ type fallbackResponse struct {
 	Predictions    []forecastPoint `json:"predictions"`
 }
 
+// maxHorizonMinutes caps forecasts at 7 days; longer horizons are not meaningful for
+// 14 days of history and would make Prophet build very large frames.
+const maxHorizonMinutes = 7 * 24 * 60
+
 func forecastHandler(w http.ResponseWriter, r *http.Request) {
 	metric, def, ok := resolveMetric(w, r)
 	if !ok {
@@ -34,6 +39,10 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 	horizonStr := r.URL.Query().Get("horizon_minutes")
 	horizonMin := 60
 	if h, err := strconv.Atoi(horizonStr); err == nil && h > 0 {
+		if h > maxHorizonMinutes {
+			http.Error(w, fmt.Sprintf("horizon_minutes must be at most %d", maxHorizonMinutes), http.StatusBadRequest)
+			return
+		}
 		horizonMin = h
 	}
 
