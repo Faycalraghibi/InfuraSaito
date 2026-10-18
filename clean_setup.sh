@@ -115,6 +115,14 @@ else
     echo "$DASHBOARD"
     exit 1
 fi
+ANNOTATIONS=$(curl -s --max-time 15 http://localhost:3000/api/dashboards/uid/infurasaito \
+    | grep -o 'infurasaito_anomaly{metric=' | wc -l) || true
+if [ "$ANNOTATIONS" -ge 6 ]; then
+    echo "   ok  Grafana anomaly markers ($ANNOTATIONS annotation queries)"
+else
+    echo "Expected 6 anomaly annotation queries on the dashboard, got $ANNOTATIONS"
+    exit 1
+fi
 
 echo "Checking the forecast accuracy endpoint (Postgres-backed)..."
 ACCURACY=$(curl -s --max-time 15 -H "X-API-Key: ${API_KEY:-}" \

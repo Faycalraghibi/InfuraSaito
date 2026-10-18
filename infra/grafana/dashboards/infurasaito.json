@@ -44,7 +44,158 @@
     ]
   },
   "annotations": {
-    "list": []
+    "list": [
+      {
+        "name": "CPU busy anomalies",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "infurasaito_anomaly{metric=\"cpu\",instance=~\"$instance\"} == 1",
+        "step": "1m",
+        "titleFormat": "CPU busy anomaly",
+        "textFormat": "{{instance}}",
+        "tagKeys": "metric,instance",
+        "useValueForTime": false,
+        "target": {
+          "expr": "infurasaito_anomaly{metric=\"cpu\",instance=~\"$instance\"} == 1",
+          "refId": "Anno"
+        },
+        "filter": {
+          "exclude": false,
+          "ids": [
+            9
+          ]
+        }
+      },
+      {
+        "name": "Memory used anomalies",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "infurasaito_anomaly{metric=\"memory\",instance=~\"$instance\"} == 1",
+        "step": "1m",
+        "titleFormat": "Memory used anomaly",
+        "textFormat": "{{instance}}",
+        "tagKeys": "metric,instance",
+        "useValueForTime": false,
+        "target": {
+          "expr": "infurasaito_anomaly{metric=\"memory\",instance=~\"$instance\"} == 1",
+          "refId": "Anno"
+        },
+        "filter": {
+          "exclude": false,
+          "ids": [
+            10
+          ]
+        }
+      },
+      {
+        "name": "Disk used anomalies",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "infurasaito_anomaly{metric=\"disk\",instance=~\"$instance\"} == 1",
+        "step": "1m",
+        "titleFormat": "Disk used anomaly",
+        "textFormat": "{{instance}}",
+        "tagKeys": "metric,instance",
+        "useValueForTime": false,
+        "target": {
+          "expr": "infurasaito_anomaly{metric=\"disk\",instance=~\"$instance\"} == 1",
+          "refId": "Anno"
+        },
+        "filter": {
+          "exclude": false,
+          "ids": [
+            11
+          ]
+        }
+      },
+      {
+        "name": "Network received anomalies",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "infurasaito_anomaly{metric=\"network_rx\",instance=~\"$instance\"} == 1",
+        "step": "1m",
+        "titleFormat": "Network received anomaly",
+        "textFormat": "{{instance}}",
+        "tagKeys": "metric,instance",
+        "useValueForTime": false,
+        "target": {
+          "expr": "infurasaito_anomaly{metric=\"network_rx\",instance=~\"$instance\"} == 1",
+          "refId": "Anno"
+        },
+        "filter": {
+          "exclude": false,
+          "ids": [
+            12
+          ]
+        }
+      },
+      {
+        "name": "Network sent anomalies",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "infurasaito_anomaly{metric=\"network_tx\",instance=~\"$instance\"} == 1",
+        "step": "1m",
+        "titleFormat": "Network sent anomaly",
+        "textFormat": "{{instance}}",
+        "tagKeys": "metric,instance",
+        "useValueForTime": false,
+        "target": {
+          "expr": "infurasaito_anomaly{metric=\"network_tx\",instance=~\"$instance\"} == 1",
+          "refId": "Anno"
+        },
+        "filter": {
+          "exclude": false,
+          "ids": [
+            13
+          ]
+        }
+      },
+      {
+        "name": "Load (1m) anomalies",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "infurasaito_anomaly{metric=\"load1\",instance=~\"$instance\"} == 1",
+        "step": "1m",
+        "titleFormat": "Load (1m) anomaly",
+        "textFormat": "{{instance}}",
+        "tagKeys": "metric,instance",
+        "useValueForTime": false,
+        "target": {
+          "expr": "infurasaito_anomaly{metric=\"load1\",instance=~\"$instance\"} == 1",
+          "refId": "Anno"
+        },
+        "filter": {
+          "exclude": false,
+          "ids": [
+            14
+          ]
+        }
+      }
+    ]
   },
   "panels": [
     {
@@ -121,7 +272,7 @@
       "gridPos": {
         "x": 0,
         "y": 1,
-        "w": 8,
+        "w": 6,
         "h": 4
       },
       "datasource": {
@@ -192,9 +343,9 @@
       },
       "id": 3,
       "gridPos": {
-        "x": 8,
+        "x": 6,
         "y": 1,
-        "w": 4,
+        "w": 3,
         "h": 4
       },
       "datasource": {
@@ -247,9 +398,9 @@
       },
       "id": 4,
       "gridPos": {
-        "x": 12,
+        "x": 9,
         "y": 1,
-        "w": 4,
+        "w": 3,
         "h": 4
       },
       "datasource": {
@@ -310,7 +461,7 @@
       },
       "id": 5,
       "gridPos": {
-        "x": 16,
+        "x": 12,
         "y": 1,
         "w": 4,
         "h": 4
@@ -365,6 +516,65 @@
       },
       "id": 6,
       "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Anomalous now",
+      "description": "Metrics whose newest sample is far from the model's expectation (checked every ANOMALY_INTERVAL). Red markers on the graphs below show when.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(infurasaito_anomaly{instance=~\"$instance\"}) or vector(0)",
+          "legendFormat": "anomalous",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "id": 7,
+      "gridPos": {
         "x": 20,
         "y": 1,
         "w": 4,
@@ -378,7 +588,7 @@
     {
       "type": "row",
       "title": "Actual vs forecast (the forecast line is shifted 30 minutes so each prediction lines up with what happened)",
-      "id": 7,
+      "id": 8,
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -391,7 +601,7 @@
     {
       "type": "timeseries",
       "title": "CPU busy",
-      "description": "Actual `cpu` against the forecast made 30 minutes earlier, with its uncertainty band. The red line is an example alert threshold (80).",
+      "description": "Actual `cpu` against the forecast made 30 minutes earlier, with its uncertainty band. The red line is an example alert threshold (80). Red markers are anomalies: samples far from the model's expectation.",
       "targets": [
         {
           "datasource": {
@@ -520,7 +730,7 @@
           "mode": "multi"
         }
       },
-      "id": 8,
+      "id": 9,
       "gridPos": {
         "x": 0,
         "y": 6,
@@ -535,7 +745,7 @@
     {
       "type": "timeseries",
       "title": "Memory used",
-      "description": "Actual `memory` against the forecast made 30 minutes earlier, with its uncertainty band. The red line is an example alert threshold (90).",
+      "description": "Actual `memory` against the forecast made 30 minutes earlier, with its uncertainty band. The red line is an example alert threshold (90). Red markers are anomalies: samples far from the model's expectation.",
       "targets": [
         {
           "datasource": {
@@ -664,7 +874,7 @@
           "mode": "multi"
         }
       },
-      "id": 9,
+      "id": 10,
       "gridPos": {
         "x": 12,
         "y": 6,
@@ -679,7 +889,7 @@
     {
       "type": "timeseries",
       "title": "Disk used",
-      "description": "Actual `disk` against the forecast made 30 minutes earlier, with its uncertainty band. The red line is an example alert threshold (90).",
+      "description": "Actual `disk` against the forecast made 30 minutes earlier, with its uncertainty band. The red line is an example alert threshold (90). Red markers are anomalies: samples far from the model's expectation.",
       "targets": [
         {
           "datasource": {
@@ -808,7 +1018,7 @@
           "mode": "multi"
         }
       },
-      "id": 10,
+      "id": 11,
       "gridPos": {
         "x": 0,
         "y": 14,
@@ -823,7 +1033,7 @@
     {
       "type": "timeseries",
       "title": "Network received",
-      "description": "Actual `network_rx` against the forecast made 30 minutes earlier, with its uncertainty band.",
+      "description": "Actual `network_rx` against the forecast made 30 minutes earlier, with its uncertainty band. Red markers are anomalies: samples far from the model's expectation.",
       "targets": [
         {
           "datasource": {
@@ -936,7 +1146,7 @@
           "mode": "multi"
         }
       },
-      "id": 11,
+      "id": 12,
       "gridPos": {
         "x": 12,
         "y": 14,
@@ -951,7 +1161,7 @@
     {
       "type": "timeseries",
       "title": "Network sent",
-      "description": "Actual `network_tx` against the forecast made 30 minutes earlier, with its uncertainty band.",
+      "description": "Actual `network_tx` against the forecast made 30 minutes earlier, with its uncertainty band. Red markers are anomalies: samples far from the model's expectation.",
       "targets": [
         {
           "datasource": {
@@ -1064,7 +1274,7 @@
           "mode": "multi"
         }
       },
-      "id": 12,
+      "id": 13,
       "gridPos": {
         "x": 0,
         "y": 22,
@@ -1079,7 +1289,7 @@
     {
       "type": "timeseries",
       "title": "Load (1m)",
-      "description": "Actual `load1` against the forecast made 30 minutes earlier, with its uncertainty band.",
+      "description": "Actual `load1` against the forecast made 30 minutes earlier, with its uncertainty band. Red markers are anomalies: samples far from the model's expectation.",
       "targets": [
         {
           "datasource": {
@@ -1192,7 +1402,7 @@
           "mode": "multi"
         }
       },
-      "id": 13,
+      "id": 14,
       "gridPos": {
         "x": 12,
         "y": 22,
@@ -1207,7 +1417,7 @@
     {
       "type": "row",
       "title": "API traffic and latency",
-      "id": 14,
+      "id": 15,
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -1261,7 +1471,7 @@
           "mode": "multi"
         }
       },
-      "id": 15,
+      "id": 16,
       "gridPos": {
         "x": 0,
         "y": 31,
@@ -1308,7 +1518,7 @@
           "mode": "multi"
         }
       },
-      "id": 16,
+      "id": 17,
       "gridPos": {
         "x": 12,
         "y": 31,
@@ -1355,7 +1565,7 @@
           "mode": "multi"
         }
       },
-      "id": 17,
+      "id": 18,
       "gridPos": {
         "x": 0,
         "y": 39,
@@ -1402,7 +1612,7 @@
           "mode": "multi"
         }
       },
-      "id": 18,
+      "id": 19,
       "gridPos": {
         "x": 12,
         "y": 39,

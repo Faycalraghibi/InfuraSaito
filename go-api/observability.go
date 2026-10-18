@@ -58,6 +58,16 @@ var (
 		Name: "infurasaito_forecast",
 		Help: "Cached forecast for 30 minutes ahead, by metric, instance and bound (value, lower, upper).",
 	}, []string{"metric", "instance", "bound"})
+
+	anomalyGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "infurasaito_anomaly",
+		Help: "Whether the newest sample was anomalous at the last background check (1) or not (0), by metric and instance.",
+	}, []string{"metric", "instance"})
+
+	anomaliesTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "infurasaito_anomalies_total",
+		Help: "Background checks that found the newest sample anomalous, by metric and instance.",
+	}, []string{"metric", "instance"})
 )
 
 func init() {
@@ -66,6 +76,7 @@ func init() {
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		httpRequests, httpDuration, httpRejected, aiDuration,
 		breakerStateGauge, lastTraining, modelsTrained, forecastGauge,
+		anomalyGauge, anomaliesTotal,
 	)
 }
 

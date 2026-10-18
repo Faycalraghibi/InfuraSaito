@@ -66,6 +66,13 @@ func main() {
 		}
 	}
 
+	if interval := anomalyIntervalFromEnv(); interval > 0 {
+		log.Printf("Checking the newest samples for anomalies every %s", interval)
+		startAnomalyChecker(context.Background(), interval)
+	} else {
+		log.Println("Background anomaly check disabled (ANOMALY_INTERVAL=0)")
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
