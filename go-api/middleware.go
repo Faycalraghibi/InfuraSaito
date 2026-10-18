@@ -60,6 +60,11 @@ func (b *tokenBucket) allow() (bool, time.Duration) {
 	return true, 0
 }
 
+// retryAfterSeconds formats a wait as a Retry-After value: whole seconds, rounded up, at least 1.
+func retryAfterSeconds(wait time.Duration) string {
+	return strconv.Itoa(max(1, int(math.Ceil(wait.Seconds()))))
+}
+
 // withRateLimit answers 429 when the bucket is empty. A nil bucket disables limiting.
 func withRateLimit(b *tokenBucket, next http.Handler) http.Handler {
 	if b == nil {
@@ -67,7 +72,7 @@ func withRateLimit(b *tokenBucket, next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if ok, wait := b.allow(); !ok {
-			w.Header().Set("Retry-After", strconv.Itoa(max(1, int(math.Ceil(wait.Seconds())))))
+			w.Header().Set("Retry-After", retryAfterSeconds(wait))
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}

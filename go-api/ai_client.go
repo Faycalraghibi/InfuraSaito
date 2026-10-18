@@ -63,16 +63,24 @@ func postAI(path string, body any) ([]byte, int, error) {
 		return nil, 0, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	if err := aiBreaker.allow(); err != nil {
+		return nil, 0, err
+	}
+
 	resp, err := aiClient.Post(aiServiceURL+path, "application/json", bytes.NewReader(jsonData))
 	if err != nil {
+		aiBreaker.record(true)
 		return nil, 0, fmt.Errorf("failed to call AI service: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
+		aiBreaker.record(true)
 		return nil, resp.StatusCode, err
 	}
+	// Only server errors count against the AI service; 4xx (e.g. no cached model) do not.
+	aiBreaker.record(resp.StatusCode >= 500)
 	return respBody, resp.StatusCode, nil
 }
 
