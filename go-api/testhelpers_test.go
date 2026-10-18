@@ -14,10 +14,21 @@ import (
 )
 
 // TestMain points the AI client at an unreachable address so a test that forgets
-// fakeAIService can never hit a real AI service running on localhost:5000.
+// fakeAIService can never hit a real AI service running on localhost:5000. It also
+// disables the circuit breaker so failures in one test can't open it for the next;
+// breaker tests opt in with useBreaker.
 func TestMain(m *testing.M) {
 	aiServiceURL = "http://127.0.0.1:0"
+	aiBreaker = nil
 	os.Exit(m.Run())
+}
+
+// useBreaker installs b as the AI circuit breaker for the test.
+func useBreaker(t *testing.T, b *circuitBreaker) {
+	t.Helper()
+	old := aiBreaker
+	aiBreaker = b
+	t.Cleanup(func() { aiBreaker = old })
 }
 
 const promEmptyVector = `{"status":"success","data":{"resultType":"vector","result":[]}}`

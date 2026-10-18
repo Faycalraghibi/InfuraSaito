@@ -63,6 +63,14 @@ func postAI(path string, body any) ([]byte, int, error) {
 		return nil, 0, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	gen, err := aiBreaker.allow()
+	if err != nil {
+		return nil, 0, err
+	}
+	// Record exactly once, even on panic, so a probe can never hold the half-open slot forever.
+	outcome := outcomeFailure
+	defer func() { aiBreaker.record(gen, outcome) }()
+
 	resp, err := aiClient.Post(aiServiceURL+path, "application/json", bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to call AI service: %w", err)
@@ -73,7 +81,23 @@ func postAI(path string, body any) ([]byte, int, error) {
 	if err != nil {
 		return nil, resp.StatusCode, err
 	}
+	outcome = classifyAIStatus(path, resp.StatusCode)
 	return respBody, resp.StatusCode, nil
+}
+
+// classifyAIStatus decides how an AI service reply affects the circuit breaker.
+// 4xx replies (e.g. 404 for a missing cached model) say nothing about the service's health.
+// /train server errors are neutral too: the background trainer fits every series, and
+// one series whose data breaks Prophet must not open the breaker for user traffic.
+func classifyAIStatus(path string, status int) callOutcome {
+	switch {
+	case status < 400:
+		return outcomeSuccess
+	case status >= 500 && path != "/train":
+		return outcomeFailure
+	default:
+		return outcomeNeutral
+	}
 }
 
 // callForecastModel trains on history and predicts in one call (/predict).

@@ -61,6 +61,8 @@ Fetches historical metric data from Prometheus, passes it to the AI service, and
 
 Forecasts come from a model the Go API trains in the background for each metric and instance (every `TRAIN_INTERVAL`), so they start after the model's last training point and include `trained_at`. Until the first training run finishes, the API trains on request instead.
 
+If the AI service fails repeatedly (connection errors or `5xx`), a circuit breaker opens: `/forecast` then returns `503` with `Retry-After` without calling the AI service, and after the cooldown a single request is let through to test whether it has recovered. Only connection errors and `5xx` replies count as failures (one forecast request can make up to two AI calls: the cached forecast, then training on request); `4xx` replies and background-training errors on bad data do not.
+
 ### `GET /api/v1/metrics/current`
 Returns the current value of a metric.
 Returns `503` when there is no data yet.
@@ -105,6 +107,8 @@ On a cold start (less than about 10 minutes of history), `/forecast` returns the
 | `RATE_LIMIT_RPS` | `10` | Requests per second allowed across all `/api/` routes; `0` disables limiting |
 | `RATE_LIMIT_BURST` | `20` | Requests allowed in a burst above the steady rate |
 | `TRAIN_INTERVAL` | `15m` | How often the Go API retrains cached models for every metric and instance (Go duration); `0` disables background training |
+| `AI_BREAKER_THRESHOLD` | `5` | Consecutive AI service failures that open the circuit breaker; `0` disables it |
+| `AI_BREAKER_COOLDOWN` | `30s` | How long the breaker stays open before letting a probe request through (Go duration) |
 
 ## Running Tests
 

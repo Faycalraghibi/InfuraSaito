@@ -135,6 +135,12 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 			aiResponseBytes, err = callForecastModel(metric, instance, history, horizonMin)
 		}
 	}
+	var openErr *circuitOpenError
+	if errors.As(err, &openErr) {
+		w.Header().Set("Retry-After", retryAfterSeconds(openErr.retryAfter))
+		http.Error(w, openErr.Error(), http.StatusServiceUnavailable)
+		return
+	}
 	if err != nil {
 		http.Error(w, "AI Forecasting failed: "+err.Error(), http.StatusBadGateway)
 		return
