@@ -67,14 +67,33 @@ func openStore(ctx context.Context, url string) (*pgStore, error) {
 
 func (s *pgStore) close() { s.pool.Close() }
 
+// retentionDays is how long stored predictions are kept: just over the longest accuracy window.
+const retentionDays = maxAccuracyDays + 1
+
+// save inserts preds and, in the same transaction, deletes this metric and instance's
+// predictions older than retentionDays. Scoping the delete lets it use forecasts_lookup.
 func (s *pgStore) save(ctx context.Context, metric, instance string, preds []storedPrediction) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) // no-op after Commit
+
 	rows := make([][]any, len(preds))
 	for i, p := range preds {
 		rows[i] = []any{metric, instance, p.Target, p.Value, p.Lower, p.Upper}
 	}
-	_, err := s.pool.CopyFrom(ctx, pgx.Identifier{"forecasts"},
-		[]string{"metric", "instance", "target_time", "value", "lower", "upper"}, pgx.CopyFromRows(rows))
-	return err
+	if _, err := tx.CopyFrom(ctx, pgx.Identifier{"forecasts"},
+		[]string{"metric", "instance", "target_time", "value", "lower", "upper"}, pgx.CopyFromRows(rows)); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM forecasts
+		WHERE metric = $1 AND instance = $2 AND target_time < now() - make_interval(days => $3)`,
+		metric, instance, retentionDays); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *pgStore) load(ctx context.Context, metric, instance string, from, to time.Time) ([]storedPrediction, error) {

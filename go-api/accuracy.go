@@ -158,7 +158,11 @@ func recordForecasts(ctx context.Context) {
 				log.Printf("recording forecasts: unreadable forecast for %s: %v", target(name, up.Instance), err)
 				continue
 			}
-			if err := forecasts.save(ctx, name, up.Instance, toStoredPredictions(forecast.Predictions)); err != nil {
+			preds := toStoredPredictions(forecast.Predictions)
+			if len(preds) == 0 {
+				continue
+			}
+			if err := forecasts.save(ctx, name, up.Instance, preds); err != nil {
 				log.Printf("recording forecasts: saving %s failed: %v", target(name, up.Instance), err)
 				continue
 			}

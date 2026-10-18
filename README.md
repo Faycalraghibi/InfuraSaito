@@ -80,7 +80,8 @@ Answers "when will this metric reach X?" from the same forecast as `/api/v1/fore
 ### `GET /api/v1/forecast/accuracy`
 Measures how good past forecasts were. After each background training run the Go API stores the next 60 minutes of every cached forecast in Postgres; this endpoint compares the predictions stored over the last `days` with what Prometheus actually recorded.
 * **Parameters**: `metric`, `instance` (as for `/forecast`), `days` (default `7`, max `30`).
-* **Response**: `compared` (predictions with an actual value within 2.5 minutes of their target time), `mape_percent` (mean absolute percentage error; actual values of zero are left out) and `band_coverage_percent` (share of actual values inside the predicted band). Both are `null` until there is something to compare.
+* **Response**: `compared` (predictions with an actual value within 2.5 minutes of their target time), `mape_percent` (mean absolute percentage error; actual values of zero are left out) and `band_coverage_percent` (share of actual values inside the predicted band). Both are `null` until there is something to compare. `compared` counts every stored prediction, so a target time forecast by several runs (at different lead times, up to 60 minutes ahead) counts once per run.
+* Stored predictions are kept for 31 days. If `DATABASE_URL` is set but Postgres is unreachable, the API stops at startup.
 * Returns `503` when `DATABASE_URL` is not configured.
 * **Example**: `curl "http://localhost:8080/api/v1/forecast/accuracy?metric=cpu&days=7"` → `{"metric_name":"cpu","instance":"node-exporter:9100","days":7,"compared":336,"mape_percent":12.4,"band_coverage_percent":81.2}`
 

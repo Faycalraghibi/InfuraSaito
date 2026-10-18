@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
 
 var prometheusURL string
@@ -24,7 +25,10 @@ func main() {
 	router := newRouter(apiKey, rateLimiterFromEnv())
 
 	if url := os.Getenv("DATABASE_URL"); url != "" {
-		store, err := openStore(context.Background(), url)
+		// A set but unreachable DATABASE_URL stops startup, like an invalid alert config.
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		store, err := openStore(ctx, url)
+		cancel()
 		if err != nil {
 			log.Fatalf("Forecast storage: %v", err)
 		}
@@ -42,10 +46,14 @@ func main() {
 		log.Printf("Alerting on %d rule(s) after each training run", len(alerts.rules))
 	}
 	afterTraining := func() {
-		recordForecasts(context.Background())
+		// Alerts first: they don't depend on the database, so a slow one can't delay them.
 		if alerts != nil {
 			alerts.evaluate()
 		}
+		// Bound the database work so a stalled Postgres can't block the trainer loop.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		recordForecasts(ctx)
 	}
 
 	if interval := trainIntervalFromEnv(); interval > 0 {

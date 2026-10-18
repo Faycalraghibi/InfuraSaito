@@ -43,7 +43,9 @@ services:
     volumes:
       - forecasts:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "infurasaito", "-d", "infurasaito"]
+      # Over TCP: the socket check passes during the image's init step, before the
+      # server accepts the TCP connections the Go API uses.
+      test: ["CMD", "pg_isready", "-h", "localhost", "-U", "infurasaito", "-d", "infurasaito"]
       interval: 5s
       timeout: 3s
       retries: 12
