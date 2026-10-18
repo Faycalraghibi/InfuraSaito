@@ -58,12 +58,20 @@ else
 fi
 
 echo "Waiting for AI Service..."
+AI_READY=false
 for attempt in $(seq 1 24); do
     if curl -sf http://localhost:5000/health > /dev/null; then
+        AI_READY=true
         break
     fi
     sleep 5
 done
+
+if [ "$AI_READY" = false ]; then
+    echo "ERROR: AI Service did not become healthy."
+    docker compose logs ai-service
+    exit 1
+fi
 
 echo "Running AI Service Test (real Prophet forecast on UTC history)..."
 python3 -c '
@@ -78,7 +86,7 @@ history = [
 print(json.dumps({"metric_name": "cpu", "history": history, "horizon_minutes": 30}))
 ' > /tmp/predict_payload.json
 
-AI_RESPONSE=$(curl -s -X POST -H "Content-Type: application/json"     --data-binary @/tmp/predict_payload.json http://localhost:5000/predict)
+AI_RESPONSE=$(curl -s --max-time 120 -X POST -H "Content-Type: application/json"     --data-binary @/tmp/predict_payload.json http://localhost:5000/predict) || true
 
 if echo "$AI_RESPONSE" | grep -q '"predictions":\[{'; then
     echo "AI Service Test Passed!"
