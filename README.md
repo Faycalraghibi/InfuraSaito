@@ -46,16 +46,28 @@ Once the stack is running, traffic is routed through the Go API on port `8080`.
 Fetches historical metric data from Prometheus, passes it to the AI service, and returns a time-series forecast.
 * **Parameters**: 
   * `metric` (default: `cpu`): `cpu` or `memory`. Other values return `400`. Returns `503` if Node Exporter is not being scraped.
-  * `horizon_minutes` (default: `60`)
+  * `horizon_minutes` (default: `60`, max: `10080` = 7 days). Larger values return `400`; non-numeric or non-positive values fall back to `60`.
 * **Example**: `curl "http://localhost:8080/api/v1/forecast?metric=cpu&horizon_minutes=60"`
 
 ### `GET /api/v1/metrics/current`
-Returns the instant rolling average of the specified infrastructure metric.
-* **Example**: `curl http://localhost:8080/api/v1/metrics/current`
+Returns the current value of a metric.
+* **Parameters**:
+  * `metric` (default: `cpu`): `cpu` or `memory`. Other values return `400`.
+* **Example**: `curl "http://localhost:8080/api/v1/metrics/current?metric=memory"`
 
 ### `GET /healthz`
 Liveness probe to verify the Go orchestration API is successfully running.
 * **Example**: `curl http://localhost:8080/healthz`
+
+## Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PROMETHEUS_URL` | `http://localhost:9090` | Prometheus base URL |
+| `AI_SERVICE_URL` | `http://localhost:5000` | AI service base URL |
+| `PROM_TIMEOUT` | `10s` | Timeout for each Prometheus request (Go duration) |
+| `AI_TIMEOUT` | `60s` | Timeout for each AI service request (Go duration) |
+| `PORT` | `8080` | Go API listen port |
 
 ## Running Tests
 
