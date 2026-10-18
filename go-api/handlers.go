@@ -37,9 +37,20 @@ type currentResponse struct {
 const maxHorizonMinutes = 7 * 24 * 60
 
 func forecastHandler(w http.ResponseWriter, r *http.Request) {
-	metric, def, ok := resolveMetric(w, r)
+	body, ok := produceForecast(w, r)
 	if !ok {
 		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(body)
+}
+
+// produceForecast returns the forecast JSON for the request (the AI service's response, or
+// the cold-start fallback). On failure it writes the error response itself and returns false.
+func produceForecast(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	metric, def, ok := resolveMetric(w, r)
+	if !ok {
+		return nil, false
 	}
 
 	horizonStr := r.URL.Query().Get("horizon_minutes")
@@ -47,7 +58,7 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 	if h, err := strconv.Atoi(horizonStr); err == nil && h > 0 {
 		if h > maxHorizonMinutes {
 			http.Error(w, fmt.Sprintf("horizon_minutes must be at most %d", maxHorizonMinutes), http.StatusBadRequest)
-			return
+			return nil, false
 		}
 		horizonMin = h
 	}
@@ -58,13 +69,13 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 	seriesList, err := queryPrometheusRange(def.rangeQuery, end.Add(-historyWindow), end, historyStep)
 	if err != nil {
 		http.Error(w, "Failed to fetch historical data: "+err.Error(), http.StatusInternalServerError)
-		return
+		return nil, false
 	}
 	series, _, ierr := selectInstance(seriesList, seriesInstance, instance)
 	if ierr != nil {
 		if ierr.status != http.StatusNotFound {
 			http.Error(w, ierr.msg, ierr.status)
-			return
+			return nil, false
 		}
 		// A new target may have no range history yet; the cold-start path checks it is real.
 		series = promSeries{}
@@ -80,16 +91,16 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 		ups, err := queryPrometheusInstant(nodeUpQuery)
 		if err != nil {
 			http.Error(w, "Metrics source unavailable: "+err.Error(), http.StatusServiceUnavailable)
-			return
+			return nil, false
 		}
 		target, found, ierr := selectInstance(ups, sampleInstance, instance)
 		if ierr != nil {
 			http.Error(w, ierr.msg, ierr.status)
-			return
+			return nil, false
 		}
 		if !found || target.Value != 1 {
 			http.Error(w, "Metrics source unavailable: node-exporter "+instanceLabel(instance)+"is not being scraped", http.StatusServiceUnavailable)
-			return
+			return nil, false
 		}
 		if target.Instance != "" {
 			instance = target.Instance
@@ -99,20 +110,19 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 		samples, err := queryPrometheusInstant(def.instantQuery)
 		if err != nil {
 			http.Error(w, "Not enough data yet for "+metric+": "+err.Error()+"; retry shortly", http.StatusServiceUnavailable)
-			return
+			return nil, false
 		}
 		sample, found, ierr := selectInstance(samples, sampleInstance, instance)
 		if ierr != nil {
 			http.Error(w, ierr.msg, ierr.status)
-			return
+			return nil, false
 		}
 		if !found {
 			http.Error(w, "Not enough data yet for "+metric+"; retry shortly", http.StatusServiceUnavailable)
-			return
+			return nil, false
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(fallbackResponse{
+		fallback, err := json.Marshal(fallbackResponse{
 			MetricName:     metric,
 			Instance:       sample.Instance,
 			HorizonMinutes: horizonMin,
@@ -121,7 +131,11 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 				{Time: time.Now().UTC().Format(time.RFC3339), Value: sample.Value, Lower: sample.Value, Upper: sample.Value},
 			},
 		})
-		return
+		if err != nil {
+			http.Error(w, "Failed to encode fallback: "+err.Error(), http.StatusInternalServerError)
+			return nil, false
+		}
+		return fallback, true
 	}
 
 	aiResponseBytes, err := forecastFromCache(metric, instance, horizonMin)
@@ -139,15 +153,14 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 	if errors.As(err, &openErr) {
 		w.Header().Set("Retry-After", retryAfterSeconds(openErr.retryAfter))
 		http.Error(w, openErr.Error(), http.StatusServiceUnavailable)
-		return
+		return nil, false
 	}
 	if err != nil {
 		http.Error(w, "AI Forecasting failed: "+err.Error(), http.StatusBadGateway)
-		return
+		return nil, false
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(aiResponseBytes)
+	return aiResponseBytes, true
 }
 
 func currentMetricsHandler(w http.ResponseWriter, r *http.Request) {

@@ -71,6 +71,12 @@ Returns `503` when there is no data yet.
   * `instance` (optional): the node-exporter instance, e.g. `node-exporter:9100`. Required when Prometheus scrapes more than one instance (`400` lists them); an unknown instance returns `404`.
 * **Example**: `curl "http://localhost:8080/api/v1/metrics/current?metric=memory"`
 
+### `GET /api/v1/forecast/threshold`
+Answers "when will this metric reach X?" from the same forecast as `/api/v1/forecast` (it accepts the same `metric`, `instance` and `horizon_minutes` parameters and returns the same errors).
+* **Parameters**: `threshold` (required, a finite number), plus the `/forecast` parameters.
+* **Response**: `will_cross` is true when the expected value reaches the threshold within the horizon; `expected_at` is the first predicted time it does, and `possible_at` the first time the upper bound does (an earlier warning). Both are `null` when not reached.
+* **Example**: `curl "http://localhost:8080/api/v1/forecast/threshold?metric=cpu&threshold=80"` → `{"metric_name":"cpu","instance":"node-exporter:9100","threshold":80,"horizon_minutes":60,"will_cross":false,"expected_at":null,"possible_at":null}`
+
 ### `GET /api/v1/instances`
 Lists the node-exporter targets Prometheus scrapes and whether each is up.
 * **Example**: `curl http://localhost:8080/api/v1/instances` → `{"instances":[{"instance":"node-exporter:9100","up":true}]}`
