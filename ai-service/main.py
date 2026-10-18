@@ -1,5 +1,6 @@
 import logging
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from pydantic import BaseModel, Field
 from model import ForecastModel
 from model_cache import ModelCache
@@ -18,6 +19,22 @@ model_has_trained = False
 
 # Trained models keyed by (metric, instance), filled by /train and read by /forecast.
 model_cache = ModelCache()
+
+REQUESTS = Counter("infurasaito_ai_requests_total", "Requests by endpoint.", ["endpoint"])
+TRAINING_SECONDS = Histogram(
+    "infurasaito_ai_training_seconds",
+    "Prophet fit duration by endpoint (train, predict).",
+    ["endpoint"],
+    buckets=(0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
+)
+CACHED_MODELS = Gauge("infurasaito_ai_cached_models", "Models in the cache.")
+# Read the module global at scrape time, so a replaced cache (e.g. in tests) is reported.
+CACHED_MODELS.set_function(lambda: len(model_cache))
+
+
+@app.get("/metrics")
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 class DataPoint(BaseModel):
@@ -90,6 +107,7 @@ def predict(req: PredictRequest):
     for a demo. In production, training and inference would be decoupled.
     """
     global model_has_trained
+    REQUESTS.labels("predict").inc()
 
     if len(req.history) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 data points in history")
@@ -97,7 +115,8 @@ def predict(req: PredictRequest):
     try:
         history_dicts = [{"ds": dp.ds, "y": dp.y} for dp in req.history]
         forecast_model = ForecastModel()
-        forecast_model.train(history_dicts)
+        with TRAINING_SECONDS.labels("predict").time():
+            forecast_model.train(history_dicts)
         predictions = forecast_model.predict(req.horizon_minutes)
         model_has_trained = True
     except Exception as e:
@@ -116,13 +135,15 @@ def predict(req: PredictRequest):
 def train(req: TrainRequest):
     """Fit a model on the history and cache it for /forecast."""
     global model_has_trained
+    REQUESTS.labels("train").inc()
 
     if len(req.history) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 data points in history")
 
     forecast_model = ForecastModel()
     try:
-        result = forecast_model.train([{"ds": dp.ds, "y": dp.y} for dp in req.history])
+        with TRAINING_SECONDS.labels("train").time():
+            result = forecast_model.train([{"ds": dp.ds, "y": dp.y} for dp in req.history])
     except Exception as e:
         logger.error("Training failed: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")
@@ -140,6 +161,7 @@ def train(req: TrainRequest):
 @app.post("/forecast", response_model=PredictResponse)
 def forecast(req: ForecastRequest):
     """Predict from the cached model; 404 when /train has not run for this metric and instance."""
+    REQUESTS.labels("forecast").inc()
     entry = model_cache.get(req.metric_name, req.instance)
     if entry is None:
         raise HTTPException(status_code=404, detail="No trained model for this metric and instance")
@@ -186,6 +208,7 @@ class AnomalyResponse(BaseModel):
 @app.post("/anomalies", response_model=AnomalyResponse)
 def anomalies(req: AnomalyRequest):
     """Flag points far from the cached model's expected values; 404 when no model is cached."""
+    REQUESTS.labels("anomalies").inc()
     entry = model_cache.get(req.metric_name, req.instance)
     if entry is None:
         raise HTTPException(status_code=404, detail="No trained model for this metric and instance")

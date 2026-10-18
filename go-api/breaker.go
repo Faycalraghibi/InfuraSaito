@@ -139,6 +139,7 @@ func (b *circuitBreaker) setState(s breakerState) {
 		log.Printf("AI circuit breaker: %s -> %s", b.state, s)
 		b.state = s
 		b.generation++
+		breakerStateGauge.Set(float64(s))
 	}
 }
 

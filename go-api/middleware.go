@@ -18,6 +18,7 @@ func withAPIKey(key string, next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-API-Key")), []byte(key)) != 1 {
+			httpRejected.WithLabelValues("unauthorized").Inc()
 			http.Error(w, "Missing or invalid API key", http.StatusUnauthorized)
 			return
 		}
@@ -72,6 +73,7 @@ func withRateLimit(b *tokenBucket, next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if ok, wait := b.allow(); !ok {
+			httpRejected.WithLabelValues("rate_limited").Inc()
 			w.Header().Set("Retry-After", retryAfterSeconds(wait))
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 			return
@@ -107,19 +109,24 @@ func rateLimiterFromEnv() *tokenBucket {
 	return newTokenBucket(rps, burst)
 }
 
-// newRouter serves /healthz openly and every /api/ route behind rate limiting and the API key.
-// Rate limiting runs first so it also slows down key guessing.
+// newRouter serves /healthz and /metrics openly and every /api/ route behind rate limiting
+// and the API key. Rate limiting runs first so it also slows down key guessing.
 func newRouter(apiKey string, limiter *tokenBucket) http.Handler {
 	api := http.NewServeMux()
-	api.HandleFunc("/api/v1/metrics/current", currentMetricsHandler)
-	api.HandleFunc("/api/v1/forecast", forecastHandler)
-	api.HandleFunc("/api/v1/forecast/threshold", thresholdHandler)
-	api.HandleFunc("/api/v1/forecast/accuracy", accuracyHandler)
-	api.HandleFunc("/api/v1/instances", instancesHandler)
-	api.HandleFunc("/api/v1/anomalies", anomaliesHandler)
+	for route, handler := range map[string]http.HandlerFunc{
+		"/api/v1/metrics/current":    currentMetricsHandler,
+		"/api/v1/forecast":           forecastHandler,
+		"/api/v1/forecast/threshold": thresholdHandler,
+		"/api/v1/forecast/accuracy":  accuracyHandler,
+		"/api/v1/instances":          instancesHandler,
+		"/api/v1/anomalies":          anomaliesHandler,
+	} {
+		api.Handle(route, instrument(route, handler))
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", healthzHandler)
+	mux.Handle("/metrics", metricsHandler())
 	mux.Handle("/api/", withRateLimit(limiter, withAPIKey(apiKey, api)))
 	return mux
 }

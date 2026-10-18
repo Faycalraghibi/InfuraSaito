@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 )
 
 type DataPoint struct {
@@ -69,7 +70,11 @@ func postAI(path string, body any) ([]byte, int, error) {
 	}
 	// Record exactly once, even on panic, so a probe can never hold the half-open slot forever.
 	outcome := outcomeFailure
-	defer func() { aiBreaker.record(gen, outcome) }()
+	start := time.Now()
+	defer func() {
+		aiBreaker.record(gen, outcome)
+		aiDuration.WithLabelValues(path, outcome.String()).Observe(time.Since(start).Seconds())
+	}()
 
 	resp, err := aiClient.Post(aiServiceURL+path, "application/json", bytes.NewReader(jsonData))
 	if err != nil {

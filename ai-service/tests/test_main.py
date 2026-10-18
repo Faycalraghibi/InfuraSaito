@@ -154,3 +154,27 @@ def test_anomalies_uses_the_cached_model(client, history):
     assert body["trained_at"] == train.json()["trained_at"]
     spike_time = recent[5]["ds"].replace("Z", "+00:00")
     assert spike_time in [a["time"] for a in body["anomalies"]]
+
+
+def metric_value(text: str, name: str) -> float:
+    """Return the value of an exposition line that starts with name (labels included)."""
+    for line in text.splitlines():
+        if line.startswith(name + " "):
+            return float(line.split()[-1])
+    raise AssertionError(f"{name} not found in /metrics")
+
+
+def test_metrics_expose_training_and_cache(client, history):
+    before = client.get("/metrics")
+    assert before.status_code == 200
+    assert before.headers["content-type"].startswith("text/plain")
+    trained_before = metric_value(before.text, 'infurasaito_ai_training_seconds_count{endpoint="train"}') \
+        if 'infurasaito_ai_training_seconds_count{endpoint="train"}' in before.text else 0.0
+
+    client.post("/train", json={"metric_name": "cpu", "history": history})
+    client.post("/forecast", json={"metric_name": "cpu", "horizon_minutes": 30})
+
+    after = client.get("/metrics").text
+    assert metric_value(after, "infurasaito_ai_cached_models") == 1
+    assert metric_value(after, 'infurasaito_ai_training_seconds_count{endpoint="train"}') == trained_before + 1
+    assert metric_value(after, 'infurasaito_ai_requests_total{endpoint="forecast"}') >= 1

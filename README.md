@@ -115,6 +115,21 @@ Under the bundled docker compose setup, node-exporter runs in its own container,
 
 On a cold start (less than about 10 minutes of history), `/forecast` returns the metric's current value with `"confidence": "none - insufficient history, showing current value"`.
 
+## Self-Monitoring
+
+Both services expose Prometheus metrics, and the bundled Prometheus scrapes them (jobs `go-api` and `ai-service`, next to `node`).
+
+* **Go API** — `GET /metrics` (open, like `/healthz`):
+  * `infurasaito_http_requests_total{route,code}` and `infurasaito_http_request_duration_seconds{route}`
+  * `infurasaito_http_rejected_total{reason}` (`unauthorized`, `rate_limited`)
+  * `infurasaito_ai_request_duration_seconds{path,outcome}` and `infurasaito_ai_breaker_state` (0 closed, 1 open, 2 half-open)
+  * `infurasaito_last_training_timestamp_seconds`, `infurasaito_models_trained`
+  * `infurasaito_forecast{metric,instance,bound}`: the cached forecast for 30 minutes ahead (`value`, `lower`, `upper`), refreshed after each training run. Graph `infurasaito_forecast offset 30m` against the actual metric to see each prediction next to what happened.
+  * Go runtime and process metrics.
+* **AI service** — `GET /metrics`: `infurasaito_ai_requests_total{endpoint}`, `infurasaito_ai_training_seconds{endpoint}`, `infurasaito_ai_cached_models`, plus Python process metrics.
+
+`/metrics` is not behind `API_KEY`: it reveals metric names and instance labels but no data values from the API. Restrict it at the network level if that matters for your deployment.
+
 ## Configuration
 
 | Variable | Default | Purpose |
