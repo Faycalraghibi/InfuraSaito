@@ -21,6 +21,7 @@ type forecastPoint struct {
 // fallbackResponse mirrors the AI service's PredictResponse schema, plus a confidence note.
 type fallbackResponse struct {
 	MetricName     string          `json:"metric_name"`
+	Instance       string          `json:"instance,omitempty"`
 	HorizonMinutes int             `json:"horizon_minutes"`
 	Confidence     string          `json:"confidence"`
 	Predictions    []forecastPoint `json:"predictions"`
@@ -46,6 +47,8 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 		horizonMin = h
 	}
 
+	instance := r.URL.Query().Get("instance")
+
 	end := time.Now()
 	start := end.Add(-14 * 24 * time.Hour)
 	step := "5m"
@@ -55,10 +58,15 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to fetch historical data: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	var history []DataPoint
-	if len(seriesList) > 0 {
-		history = seriesList[0].Points
+	series, _, ierr := selectInstance(seriesList, seriesInstance, instance)
+	if ierr != nil {
+		http.Error(w, ierr.msg, ierr.status)
+		return
 	}
+	if series.Instance != "" {
+		instance = series.Instance
+	}
+	history := series.Points
 
 	if len(history) < 2 {
 		// Only treat short history as a cold start if the exporter is actually up;
@@ -70,25 +78,35 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Report the current value: unlike a fixed baseline, it is meaningful for any unit.
-		current, err := queryPrometheus(def.instantQuery)
+		samples, err := queryPrometheusInstant(def.instantQuery)
 		if err != nil {
 			http.Error(w, "Not enough data yet for "+metric+": "+err.Error()+"; retry shortly", http.StatusServiceUnavailable)
+			return
+		}
+		sample, found, ierr := selectInstance(samples, sampleInstance, instance)
+		if ierr != nil {
+			http.Error(w, ierr.msg, ierr.status)
+			return
+		}
+		if !found {
+			http.Error(w, "Not enough data yet for "+metric+"; retry shortly", http.StatusServiceUnavailable)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(fallbackResponse{
 			MetricName:     metric,
+			Instance:       sample.Instance,
 			HorizonMinutes: horizonMin,
 			Confidence:     "none - insufficient history, showing current value",
 			Predictions: []forecastPoint{
-				{Time: time.Now().UTC().Format(time.RFC3339), Value: current, Lower: current, Upper: current},
+				{Time: time.Now().UTC().Format(time.RFC3339), Value: sample.Value, Lower: sample.Value, Upper: sample.Value},
 			},
 		})
 		return
 	}
 
-	aiResponseBytes, err := callForecastModel(metric, history, horizonMin)
+	aiResponseBytes, err := callForecastModel(metric, instance, history, horizonMin)
 	if err != nil {
 		http.Error(w, "AI Forecasting failed: "+err.Error(), http.StatusBadGateway)
 		return
@@ -104,15 +122,27 @@ func currentMetricsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	val, err := queryPrometheus(def.instantQuery)
+	instance := r.URL.Query().Get("instance")
+
+	samples, err := queryPrometheusInstant(def.instantQuery)
 	if err != nil {
 		http.Error(w, "Failed to fetch metrics: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	sample, found, ierr := selectInstance(samples, sampleInstance, instance)
+	if ierr != nil {
+		http.Error(w, ierr.msg, ierr.status)
+		return
+	}
+	if !found {
+		http.Error(w, "No data yet for "+metric+"; retry shortly", http.StatusServiceUnavailable)
+		return
+	}
 
 	response := map[string]interface{}{
-		"metric": metric,
-		"value":  val,
+		"metric":   metric,
+		"instance": sample.Instance,
+		"value":    sample.Value,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
