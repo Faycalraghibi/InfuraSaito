@@ -23,14 +23,29 @@ func main() {
 	}
 	router := newRouter(apiKey, rateLimiterFromEnv())
 
+	if url := os.Getenv("DATABASE_URL"); url != "" {
+		store, err := openStore(context.Background(), url)
+		if err != nil {
+			log.Fatalf("Forecast storage: %v", err)
+		}
+		forecasts = store
+		log.Println("Recording forecasts after each training run")
+	} else {
+		log.Println("DATABASE_URL not set, forecasts are not stored (accuracy endpoint disabled)")
+	}
+
 	alerts, err := alerterFromEnv()
 	if err != nil {
 		log.Fatalf("Invalid alert configuration: %v", err)
 	}
-	var afterTraining func()
 	if alerts != nil {
 		log.Printf("Alerting on %d rule(s) after each training run", len(alerts.rules))
-		afterTraining = alerts.evaluate
+	}
+	afterTraining := func() {
+		recordForecasts(context.Background())
+		if alerts != nil {
+			alerts.evaluate()
+		}
 	}
 
 	if interval := trainIntervalFromEnv(); interval > 0 {
@@ -38,8 +53,8 @@ func main() {
 		startTrainer(context.Background(), interval, afterTraining)
 	} else {
 		log.Println("Background training disabled (TRAIN_INTERVAL=0)")
-		if alerts != nil {
-			log.Println("Alert rules are configured but never evaluated: they run after background training")
+		if alerts != nil || forecasts != nil {
+			log.Println("Alerts and forecast recording are configured but never run: they run after background training")
 		}
 	}
 

@@ -2,8 +2,9 @@ FROM golang:1.22-alpine AS builder
 
 WORKDIR /app
 COPY go.* ./
-# No external dependencies yet, but good practice
-RUN go mod download || true
+# Download dependencies in their own layer so code changes don't refetch them.
+ENV GOTOOLCHAIN=local
+RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o forecasting-api .

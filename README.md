@@ -77,6 +77,13 @@ Answers "when will this metric reach X?" from the same forecast as `/api/v1/fore
 * **Response**: `will_cross` is true when the expected value reaches the threshold within the horizon; `expected_at` is the first predicted time it does, and `possible_at` the first time the upper bound does (an earlier warning). Both are `null` when not reached.
 * **Example**: `curl "http://localhost:8080/api/v1/forecast/threshold?metric=cpu&threshold=80"` → `{"metric_name":"cpu","instance":"node-exporter:9100","threshold":80,"horizon_minutes":60,"will_cross":false,"expected_at":null,"possible_at":null}`
 
+### `GET /api/v1/forecast/accuracy`
+Measures how good past forecasts were. After each background training run the Go API stores the next 60 minutes of every cached forecast in Postgres; this endpoint compares the predictions stored over the last `days` with what Prometheus actually recorded.
+* **Parameters**: `metric`, `instance` (as for `/forecast`), `days` (default `7`, max `30`).
+* **Response**: `compared` (predictions with an actual value within 2.5 minutes of their target time), `mape_percent` (mean absolute percentage error; actual values of zero are left out) and `band_coverage_percent` (share of actual values inside the predicted band). Both are `null` until there is something to compare.
+* Returns `503` when `DATABASE_URL` is not configured.
+* **Example**: `curl "http://localhost:8080/api/v1/forecast/accuracy?metric=cpu&days=7"` → `{"metric_name":"cpu","instance":"node-exporter:9100","days":7,"compared":336,"mape_percent":12.4,"band_coverage_percent":81.2}`
+
 ### `GET /api/v1/anomalies`
 Flags recent points that are far from what the trained model expected: more than 3 standard deviations from its expected value, with the standard deviation estimated from the model's 80% uncertainty band (flagging everything outside the band would flag about 1 in 5 normal points).
 * **Parameters**: `metric`, `instance` (as for `/forecast`), `window_minutes` (default `60`, max `1440`): how much recent history to check.
@@ -124,6 +131,8 @@ On a cold start (less than about 10 minutes of history), `/forecast` returns the
 | `AI_BREAKER_COOLDOWN` | `30s` | How long the breaker stays open before letting a probe request through (Go duration) |
 | `ALERT_RULES` | unset | JSON array of alert rules (see [Alerts](#alerts)) |
 | `ALERT_WEBHOOK_URL` | unset | Webhook that receives alerts; required when `ALERT_RULES` is set |
+| `DATABASE_URL` | set by compose | Postgres connection string for forecast storage; unset disables storage and the accuracy endpoint |
+| `POSTGRES_PASSWORD` | `infurasaito` | Password for the bundled Postgres (compose only); change it outside local development |
 
 ## Alerts
 

@@ -114,6 +114,7 @@ func newRouter(apiKey string, limiter *tokenBucket) http.Handler {
 	api.HandleFunc("/api/v1/metrics/current", currentMetricsHandler)
 	api.HandleFunc("/api/v1/forecast", forecastHandler)
 	api.HandleFunc("/api/v1/forecast/threshold", thresholdHandler)
+	api.HandleFunc("/api/v1/forecast/accuracy", accuracyHandler)
 	api.HandleFunc("/api/v1/instances", instancesHandler)
 	api.HandleFunc("/api/v1/anomalies", anomaliesHandler)
 
