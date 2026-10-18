@@ -113,6 +113,7 @@ func newRouter(apiKey string, limiter *tokenBucket) http.Handler {
 	api := http.NewServeMux()
 	api.HandleFunc("/api/v1/metrics/current", currentMetricsHandler)
 	api.HandleFunc("/api/v1/forecast", forecastHandler)
+	api.HandleFunc("/api/v1/forecast/threshold", thresholdHandler)
 	api.HandleFunc("/api/v1/instances", instancesHandler)
 
 	mux := http.NewServeMux()

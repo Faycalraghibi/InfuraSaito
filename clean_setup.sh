@@ -73,6 +73,17 @@ else
     exit 1
 fi
 
+echo "Checking the threshold endpoint..."
+THRESHOLD=$(curl -s --max-time 15 -H "X-API-Key: ${API_KEY:-}" \
+    "http://localhost:8080/api/v1/forecast/threshold?metric=cpu&threshold=1000") || true
+if echo "$THRESHOLD" | grep -q '"will_cross":false'; then
+    echo "   ok  /api/v1/forecast/threshold"
+else
+    echo "Threshold check failed. Got:"
+    echo "$THRESHOLD"
+    exit 1
+fi
+
 if [ -n "${API_KEY:-}" ]; then
     echo "Checking that /api/ rejects requests without the API key..."
     STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8080/api/v1/instances) || true
