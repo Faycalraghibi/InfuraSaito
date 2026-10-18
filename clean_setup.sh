@@ -97,6 +97,25 @@ else
     exit 1
 fi
 
+echo "Checking Grafana (provisioned datasource and dashboard)..."
+DATASOURCE=$(curl -s --max-time 15 -u "admin:${GRAFANA_ADMIN_PASSWORD:-admin}" \
+    http://localhost:3000/api/datasources/uid/prometheus/health) || true
+if echo "$DATASOURCE" | grep -q '"status":"OK"'; then
+    echo "   ok  Grafana Prometheus datasource"
+else
+    echo "Grafana datasource check failed. Got:"
+    echo "$DATASOURCE"
+    exit 1
+fi
+DASHBOARD=$(curl -s --max-time 15 "http://localhost:3000/api/search?query=InfuraSaito") || true
+if echo "$DASHBOARD" | grep -q '"uid":"infurasaito"'; then
+    echo "   ok  Grafana dashboard (anonymous read access)"
+else
+    echo "Grafana dashboard check failed. Got:"
+    echo "$DASHBOARD"
+    exit 1
+fi
+
 echo "Checking the forecast accuracy endpoint (Postgres-backed)..."
 ACCURACY=$(curl -s --max-time 15 -H "X-API-Key: ${API_KEY:-}" \
     "http://localhost:8080/api/v1/forecast/accuracy?metric=cpu&days=1") || true

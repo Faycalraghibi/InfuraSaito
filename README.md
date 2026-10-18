@@ -115,6 +115,16 @@ Under the bundled docker compose setup, node-exporter runs in its own container,
 
 On a cold start (less than about 10 minutes of history), `/forecast` returns the metric's current value with `"confidence": "none - insufficient history, showing current value"`.
 
+## Dashboard
+
+Grafana runs at [http://localhost:3000](http://localhost:3000) with the Prometheus datasource and the **InfuraSaito** dashboard provisioned automatically (it is the home page; viewing needs no login, sign in as `admin` to edit):
+
+* **Service health**: scrape status of every target, circuit breaker state, models trained and time since the last training run.
+* **Actual vs forecast** for every metric: the actual value next to the forecast made 30 minutes earlier and its uncertainty band, with example alert thresholds on CPU (80%), memory and disk (90%). Filter by instance at the top.
+* **API traffic and latency**: requests per second by route and status, rejected requests, p95 latency of the API, of AI service calls and of Prophet training.
+
+The forecast lines appear once background training has produced models (a few minutes to fill in, since Prometheus needs some history first).
+
 ## Self-Monitoring
 
 Both services expose Prometheus metrics, and the bundled Prometheus scrapes them (jobs `go-api` and `ai-service`, next to `node`).
@@ -149,6 +159,7 @@ Both services expose Prometheus metrics, and the bundled Prometheus scrapes them
 | `ALERT_WEBHOOK_URL` | unset | Webhook that receives alerts; required when `ALERT_RULES` is set |
 | `DATABASE_URL` | set by compose | Postgres connection string for forecast storage; unset disables storage and the accuracy endpoint |
 | `POSTGRES_PASSWORD` | `infurasaito` | Password for the bundled Postgres (compose only); change it outside local development |
+| `GRAFANA_ADMIN_PASSWORD` | `admin` | Grafana admin password (compose only); change it outside local development |
 
 ## Alerts
 
