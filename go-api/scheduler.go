@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"sort"
@@ -38,6 +39,11 @@ func trainAll() int {
 				continue
 			}
 			if err := trainModel(name, series.Instance, series.Points); err != nil {
+				var openErr *circuitOpenError
+				if errors.As(err, &openErr) {
+					log.Printf("training stopped: %v", err)
+					return trained
+				}
 				log.Printf("training %s/%s failed: %v", name, series.Instance, err)
 				continue
 			}
