@@ -206,3 +206,55 @@ func getInstances() *httptest.ResponseRecorder {
 	instancesHandler(rec, req)
 	return rec
 }
+
+// aiReply is a canned response from the fake AI service.
+type aiReply struct {
+	status int
+	body   string
+}
+
+// aiCall is one request the fake AI service received.
+type aiCall struct {
+	path string
+	body map[string]any
+}
+
+// aiCalls records the requests the fake AI service received, in order.
+type aiCalls struct {
+	calls []aiCall
+}
+
+func (c *aiCalls) paths() []string {
+	paths := make([]string, len(c.calls))
+	for i, call := range c.calls {
+		paths[i] = call.path
+	}
+	return paths
+}
+
+// fakeAIRoutes answers each path with its reply (unknown paths get 404), records every
+// request, and points aiServiceURL at it.
+func fakeAIRoutes(t *testing.T, routes map[string]aiReply) *aiCalls {
+	t.Helper()
+	recorded := &aiCalls{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		raw, _ := io.ReadAll(r.Body)
+		json.Unmarshal(raw, &body)
+		recorded.calls = append(recorded.calls, aiCall{path: r.URL.Path, body: body})
+
+		reply, ok := routes[r.URL.Path]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(reply.status)
+		fmt.Fprint(w, reply.body)
+	}))
+	t.Cleanup(srv.Close)
+
+	old := aiServiceURL
+	aiServiceURL = srv.URL
+	t.Cleanup(func() { aiServiceURL = old })
+	return recorded
+}

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -425,5 +426,48 @@ func TestCurrentMetricOmitsEmptyInstance(t *testing.T) {
 
 	if strings.Contains(rec.Body.String(), `"instance"`) {
 		t.Errorf("body = %s, want no instance key", rec.Body)
+	}
+}
+
+func TestForecastUsesCachedModel(t *testing.T) {
+	fakePrometheus(t, promRange(1, 2), promInstant(1))
+	ai := fakeAIRoutes(t, map[string]aiReply{"/forecast": {http.StatusOK, `{"cached":true}`}})
+
+	rec := getForecast("metric=memory&horizon_minutes=30")
+
+	if rec.Code != http.StatusOK || rec.Body.String() != `{"cached":true}` {
+		t.Fatalf("got %d %s, want the cached forecast passed through", rec.Code, rec.Body)
+	}
+	if !slices.Equal(ai.paths(), []string{"/forecast"}) {
+		t.Errorf("AI calls = %v, want only /forecast", ai.paths())
+	}
+	if b := ai.calls[0].body; b["metric_name"] != "memory" || b["horizon_minutes"] != float64(30) {
+		t.Errorf("/forecast body = %v, want memory/30", b)
+	}
+}
+
+func TestForecastFallsBackToPredictWithoutCachedModel(t *testing.T) {
+	fakePrometheus(t, promRange(1, 2), promInstant(1))
+	ai := fakeAIRoutes(t, map[string]aiReply{"/predict": {http.StatusOK, `{"fresh":true}`}})
+
+	rec := getForecast("")
+
+	if rec.Code != http.StatusOK || rec.Body.String() != `{"fresh":true}` {
+		t.Fatalf("got %d %s, want the /predict response", rec.Code, rec.Body)
+	}
+	if !slices.Equal(ai.paths(), []string{"/forecast", "/predict"}) {
+		t.Errorf("AI calls = %v, want /forecast then /predict", ai.paths())
+	}
+}
+
+func TestForecastFallsBackToPredictWhenCacheErrors(t *testing.T) {
+	fakePrometheus(t, promRange(1, 2), promInstant(1))
+	fakeAIRoutes(t, map[string]aiReply{
+		"/forecast": {http.StatusInternalServerError, `{"detail":"boom"}`},
+		"/predict":  {http.StatusOK, `{"fresh":true}`},
+	})
+
+	if rec := getForecast(""); rec.Code != http.StatusOK || rec.Body.String() != `{"fresh":true}` {
+		t.Errorf("got %d %s, want the /predict response", rec.Code, rec.Body)
 	}
 }

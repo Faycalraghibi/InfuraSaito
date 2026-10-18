@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -125,7 +127,13 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	aiResponseBytes, err := callForecastModel(metric, instance, history, horizonMin)
+	aiResponseBytes, err := forecastFromCache(metric, instance, horizonMin)
+	if err != nil {
+		if !errors.Is(err, errNoCachedModel) {
+			log.Printf("cached forecast for %s/%s failed, training on request: %v", metric, instance, err)
+		}
+		aiResponseBytes, err = callForecastModel(metric, instance, history, horizonMin)
+	}
 	if err != nil {
 		http.Error(w, "AI Forecasting failed: "+err.Error(), http.StatusBadGateway)
 		return
