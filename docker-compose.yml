@@ -84,6 +84,7 @@ services:
       ALERT_RULES: "${ALERT_RULES:-}"
       ALERT_WEBHOOK_URL: "${ALERT_WEBHOOK_URL:-}"
       TRAIN_INTERVAL: "${TRAIN_INTERVAL:-15m}"
+      ANOMALY_INTERVAL: "${ANOMALY_INTERVAL:-1m}"
     depends_on:
       prometheus:
         condition: service_healthy

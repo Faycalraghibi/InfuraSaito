@@ -91,6 +91,7 @@ Flags recent points that are far from what the trained model expected: more than
 * **Response**: `checked` (points examined) and `anomalies`, each with `time`, `value`, `expected`, `lower`, `upper` and `deviation` (value minus expected), plus the model's `trained_at`.
 * Returns `503` until background training has produced a model for the metric and instance.
 * **Example**: `curl "http://localhost:8080/api/v1/anomalies?metric=cpu&window_minutes=120"`
+* In the background, the Go API also checks the newest sample of every metric and instance every `ANOMALY_INTERVAL` (default `1m`) and exports the result as `infurasaito_anomaly`, which the dashboard shows as red markers.
 
 ### `GET /api/v1/instances`
 Lists the node-exporter targets Prometheus scrapes and whether each is up.
@@ -119,8 +120,8 @@ On a cold start (less than about 10 minutes of history), `/forecast` returns the
 
 Grafana runs at [http://localhost:3000](http://localhost:3000) with the Prometheus datasource and the **InfuraSaito** dashboard provisioned automatically (it is the home page; viewing needs no login, sign in as `admin` to edit):
 
-* **Service health**: scrape status of every target, circuit breaker state, models trained and time since the last training run.
-* **Actual vs forecast** for every metric: the actual value next to the forecast made 30 minutes earlier and its uncertainty band, with example alert thresholds on CPU (80%), memory and disk (90%). Filter by instance at the top.
+* **Service health**: scrape status of every target, circuit breaker state, models trained, time since the last training run and how many metrics are anomalous right now.
+* **Actual vs forecast** for every metric: the actual value next to the forecast made 30 minutes earlier and its uncertainty band, with example alert thresholds on CPU (80%), memory and disk (90%). Red markers show anomalies found by the background check; toggle them per metric at the top, next to the instance filter.
 * **API traffic and latency**: requests per second by route and status, rejected requests, p95 latency of the API, of AI service calls and of Prophet training.
 
 The forecast lines appear once background training has produced models (a few minutes to fill in, since Prometheus needs some history first).
@@ -135,6 +136,7 @@ Both services expose Prometheus metrics, and the bundled Prometheus scrapes them
   * `infurasaito_ai_request_duration_seconds{path,outcome}` and `infurasaito_ai_breaker_state` (0 closed, 1 open, 2 half-open)
   * `infurasaito_last_training_timestamp_seconds`, `infurasaito_models_trained`
   * `infurasaito_forecast{metric,instance,bound}`: the cached forecast for 30 minutes ahead (`value`, `lower`, `upper`), refreshed after each training run. Graph `infurasaito_forecast offset 30m` against the actual metric to see each prediction next to what happened.
+  * `infurasaito_anomaly{metric,instance}`: `1` when the newest sample was anomalous at the last background check, `0` otherwise; `infurasaito_anomalies_total{metric,instance}` counts the anomalous checks.
   * Go runtime and process metrics.
 * **AI service** — `GET /metrics`: `infurasaito_ai_requests_total{endpoint}`, `infurasaito_ai_training_seconds{endpoint}`, `infurasaito_ai_cached_models`, plus Python process metrics.
 
@@ -153,6 +155,7 @@ Both services expose Prometheus metrics, and the bundled Prometheus scrapes them
 | `RATE_LIMIT_RPS` | `10` | Requests per second allowed across all `/api/` routes; `0` disables limiting |
 | `RATE_LIMIT_BURST` | `20` | Requests allowed in a burst above the steady rate |
 | `TRAIN_INTERVAL` | `15m` | How often the Go API retrains cached models for every metric and instance (Go duration); `0` disables background training |
+| `ANOMALY_INTERVAL` | `1m` | How often the Go API checks the newest sample of every metric and instance for anomalies (Go duration); `0` disables the check |
 | `AI_BREAKER_THRESHOLD` | `5` | Consecutive AI service failures that open the circuit breaker; `0` disables it |
 | `AI_BREAKER_COOLDOWN` | `30s` | How long the breaker stays open before letting a probe request through (Go duration) |
 | `ALERT_RULES` | unset | JSON array of alert rules (see [Alerts](#alerts)) |
