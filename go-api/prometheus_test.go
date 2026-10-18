@@ -8,11 +8,12 @@ import (
 func TestQueryPrometheusRangeParsesValues(t *testing.T) {
 	fakePrometheus(t, promRange(1.5, 2.5), "")
 
-	pts, err := queryPrometheusRange("q", time.Unix(0, 0), time.Unix(600, 0), "5m")
+	series, err := queryPrometheusRange("q", time.Unix(0, 0), time.Unix(600, 0), "5m")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	pts := firstSeriesPoints(t, series)
 	if len(pts) != 2 {
 		t.Fatalf("got %d points, want 2", len(pts))
 	}
@@ -27,11 +28,12 @@ func TestQueryPrometheusRangeSkipsMalformedRows(t *testing.T) {
 		`[1700000000,"1"],[1700000300,"not-a-number"],["bad-ts","2"],[1700000600,"3"]]}]}}`
 	fakePrometheus(t, body, "")
 
-	pts, err := queryPrometheusRange("q", time.Unix(0, 0), time.Unix(600, 0), "5m")
+	series, err := queryPrometheusRange("q", time.Unix(0, 0), time.Unix(600, 0), "5m")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	pts := firstSeriesPoints(t, series)
 	if len(pts) != 2 || pts[0].Y != 1 || pts[1].Y != 3 {
 		t.Errorf("got %+v, want only the two well-formed rows", pts)
 	}
@@ -40,10 +42,10 @@ func TestQueryPrometheusRangeSkipsMalformedRows(t *testing.T) {
 func TestQueryPrometheusRangeEmptyResultIsNotAnError(t *testing.T) {
 	fakePrometheus(t, promRange(), "")
 
-	pts, err := queryPrometheusRange("q", time.Unix(0, 0), time.Unix(600, 0), "5m")
+	series, err := queryPrometheusRange("q", time.Unix(0, 0), time.Unix(600, 0), "5m")
 
-	if err != nil || len(pts) != 0 {
-		t.Errorf("got (%v, %v), want (empty, nil)", pts, err)
+	if err != nil || len(series) != 0 {
+		t.Errorf("got (%v, %v), want (empty, nil)", series, err)
 	}
 }
 
@@ -103,10 +105,14 @@ func TestQueryPrometheusRangeSkipsShortRows(t *testing.T) {
 		`[1700000000,"1"],[1700000300],[]]}]}}`
 	fakePrometheus(t, body, "")
 
-	pts, err := queryPrometheusRange("q", time.Unix(0, 0), time.Unix(600, 0), "5m")
+	series, err := queryPrometheusRange("q", time.Unix(0, 0), time.Unix(600, 0), "5m")
 
-	if err != nil || len(pts) != 1 || pts[0].Y != 1 {
-		t.Errorf("got (%+v, %v), want only the one complete row", pts, err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	pts := firstSeriesPoints(t, series)
+	if len(pts) != 1 || pts[0].Y != 1 {
+		t.Errorf("got %+v, want only the one complete row", pts)
 	}
 }
 
@@ -115,5 +121,53 @@ func TestQueryPrometheusShortValueIsError(t *testing.T) {
 
 	if _, err := queryPrometheus("q"); err == nil {
 		t.Error("want error for a value without a sample, got nil")
+	}
+}
+
+// firstSeriesPoints fails the test unless there is exactly one series, and returns its points.
+func firstSeriesPoints(t *testing.T, series []promSeries) []DataPoint {
+	t.Helper()
+	if len(series) != 1 {
+		t.Fatalf("got %d series, want 1", len(series))
+	}
+	return series[0].Points
+}
+
+func TestQueryPrometheusRangeReturnsEverySeries(t *testing.T) {
+	fakePrometheus(t, promMatrix(promSeriesJSON("a:9100", 1, 2), promSeriesJSON("b:9100", 3)), "")
+
+	series, err := queryPrometheusRange("q", time.Unix(0, 0), time.Unix(600, 0), "5m")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(series) != 2 || series[0].Instance != "a:9100" || series[1].Instance != "b:9100" {
+		t.Fatalf("series = %+v, want a:9100 and b:9100", series)
+	}
+	if len(series[0].Points) != 2 || len(series[1].Points) != 1 || series[1].Points[0].Y != 3 {
+		t.Errorf("points = %+v / %+v, want 2 and 1 (y=3)", series[0].Points, series[1].Points)
+	}
+}
+
+func TestQueryPrometheusInstantReturnsEverySample(t *testing.T) {
+	fakePrometheus(t, "", promVector(promSampleJSON("a:9100", 1.5), promSampleJSON("b:9100", 2.5)))
+
+	samples, err := queryPrometheusInstant("q")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(samples) != 2 || samples[0] != (promSample{"a:9100", 1.5}) || samples[1] != (promSample{"b:9100", 2.5}) {
+		t.Errorf("samples = %+v, want a:9100=1.5 and b:9100=2.5", samples)
+	}
+}
+
+func TestQueryPrometheusInstantEmptyIsNotAnError(t *testing.T) {
+	fakePrometheus(t, "", promEmptyVector)
+
+	samples, err := queryPrometheusInstant("q")
+
+	if err != nil || len(samples) != 0 {
+		t.Errorf("got (%v, %v), want (empty, nil)", samples, err)
 	}
 }
