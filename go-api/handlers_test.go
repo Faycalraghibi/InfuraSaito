@@ -165,3 +165,61 @@ func TestForecastAIServiceTimeoutReturns502(t *testing.T) {
 		t.Errorf("status = %d, want 502", rec.Code)
 	}
 }
+
+func TestForecastUsesTheRequestedMetricsRangeQuery(t *testing.T) {
+	calls := fakePrometheus(t, promRange(1, 2), promInstant(1))
+	fakeAIService(t, http.StatusOK, `{}`)
+
+	getForecast("metric=memory")
+
+	if len(calls.queries) == 0 || calls.queries[0] != metrics["memory"].rangeQuery {
+		t.Errorf("queries = %q, want first to be the memory range query", calls.queries)
+	}
+}
+
+func TestCurrentMetricUsesInstantQuery(t *testing.T) {
+	tests := []struct {
+		query, metric string
+	}{
+		{"", "cpu"},
+		{"metric=cpu", "cpu"},
+		{"metric=memory", "memory"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.metric+"/"+tc.query, func(t *testing.T) {
+			calls := fakePrometheus(t, "", promInstant(42.5))
+
+			rec := getCurrent(tc.query)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body)
+			}
+			if len(calls.queries) != 1 || calls.queries[0] != metrics[tc.metric].instantQuery {
+				t.Errorf("queries = %q, want the %s instant query", calls.queries, tc.metric)
+			}
+			var body struct {
+				Metric string  `json:"metric"`
+				Value  float64 `json:"value"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("invalid JSON: %v", err)
+			}
+			if body.Metric != tc.metric || body.Value != 42.5 {
+				t.Errorf("body = %+v, want %s/42.5", body, tc.metric)
+			}
+		})
+	}
+}
+
+func TestCurrentMetricRejectsUnsupportedMetric(t *testing.T) {
+	calls := fakePrometheus(t, "", promInstant(1))
+
+	rec := getCurrent("metric=bogus")
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+	if len(calls.queries) != 0 {
+		t.Errorf("Prometheus was queried %d times, want 0", len(calls.queries))
+	}
+}
