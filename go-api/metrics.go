@@ -22,10 +22,11 @@ var metrics = map[string]metricDef{
 		rangeQuery:   `100 * (1 - avg by (instance) (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))`,
 		instantQuery: `100 * (1 - avg by (instance) (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))`,
 	},
-	// Percent of the root filesystem in use.
+	// Percent of the root filesystem in use. Inside the node-exporter container "/" is not
+	// exposed, so the bind-mounted /etc/hosts (same device as the host disk) stands in for it.
 	"disk": {
-		rangeQuery:   `100 * (1 - avg by (instance) (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}))`,
-		instantQuery: `100 * (1 - avg by (instance) (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}))`,
+		rangeQuery:   `100 * (1 - avg by (instance) (node_filesystem_avail_bytes{mountpoint=~"/|/etc/hosts"} / node_filesystem_size_bytes{mountpoint=~"/|/etc/hosts"}))`,
+		instantQuery: `100 * (1 - avg by (instance) (node_filesystem_avail_bytes{mountpoint=~"/|/etc/hosts"} / node_filesystem_size_bytes{mountpoint=~"/|/etc/hosts"}))`,
 	},
 	// Bytes per second received, all interfaces except loopback.
 	"network_rx": {
