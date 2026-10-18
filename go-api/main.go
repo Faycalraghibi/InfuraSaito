@@ -16,10 +16,11 @@ func main() {
 		log.Println("PROMETHEUS_URL not set, defaulting to", prometheusURL)
 	}
 
-	http.HandleFunc("/healthz", healthzHandler)
-	http.HandleFunc("/api/v1/metrics/current", currentMetricsHandler)
-	http.HandleFunc("/api/v1/forecast", forecastHandler)
-	http.HandleFunc("/api/v1/instances", instancesHandler)
+	apiKey := os.Getenv("API_KEY")
+	if apiKey == "" {
+		log.Println("API_KEY not set, /api/ routes are unauthenticated")
+	}
+	router := newRouter(apiKey, rateLimiterFromEnv())
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -27,7 +28,7 @@ func main() {
 	}
 
 	log.Printf("Starting Go API on port %s", port)
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
+	if err := http.ListenAndServe(":"+port, router); err != nil {
 		log.Fatal(err)
 	}
 }

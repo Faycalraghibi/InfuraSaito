@@ -63,6 +63,8 @@ jobs:
     - name: Run Setup and Integration Test
       env:
         COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
+        # Exercise authentication end to end (any non-empty value works).
+        API_KEY: ci-integration-key
       run: |
         chmod +x ./clean_setup.sh
         ./clean_setup.sh
