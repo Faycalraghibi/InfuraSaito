@@ -23,20 +23,23 @@ var metrics = map[string]metricDef{
 		instantQuery: `100 * (1 - avg by (instance) (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))`,
 	},
 	// Percent of the root filesystem in use. Inside the node-exporter container "/" is not
-	// exposed, so the bind-mounted /etc/hosts (same device as the host disk) stands in for it.
+	// exposed, so the bind-mounted /etc/hosts stands in for it: that reports Docker's data
+	// disk (the VM disk on Docker Desktop) rather than the host's "/".
 	"disk": {
 		rangeQuery:   `100 * (1 - avg by (instance) (node_filesystem_avail_bytes{mountpoint=~"/|/etc/hosts"} / node_filesystem_size_bytes{mountpoint=~"/|/etc/hosts"}))`,
 		instantQuery: `100 * (1 - avg by (instance) (node_filesystem_avail_bytes{mountpoint=~"/|/etc/hosts"} / node_filesystem_size_bytes{mountpoint=~"/|/etc/hosts"}))`,
 	},
-	// Bytes per second received, all interfaces except loopback.
+	// Bytes per second received on the interfaces node-exporter can see, excluding loopback
+	// and container virtual interfaces (which would double-count traffic on a real host).
+	// Under docker compose that is only the node-exporter container's own interface.
 	"network_rx": {
-		rangeQuery:   `sum by (instance) (rate(node_network_receive_bytes_total{device!="lo"}[5m]))`,
-		instantQuery: `sum by (instance) (rate(node_network_receive_bytes_total{device!="lo"}[1m]))`,
+		rangeQuery:   `sum by (instance) (rate(node_network_receive_bytes_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]))`,
+		instantQuery: `sum by (instance) (rate(node_network_receive_bytes_total{device!~"lo|veth.*|docker.*|br-.*"}[1m]))`,
 	},
-	// Bytes per second transmitted, all interfaces except loopback.
+	// Bytes per second transmitted; same interface selection as network_rx.
 	"network_tx": {
-		rangeQuery:   `sum by (instance) (rate(node_network_transmit_bytes_total{device!="lo"}[5m]))`,
-		instantQuery: `sum by (instance) (rate(node_network_transmit_bytes_total{device!="lo"}[1m]))`,
+		rangeQuery:   `sum by (instance) (rate(node_network_transmit_bytes_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]))`,
+		instantQuery: `sum by (instance) (rate(node_network_transmit_bytes_total{device!~"lo|veth.*|docker.*|br-.*"}[1m]))`,
 	},
 	// 1-minute load average.
 	"load1": {

@@ -128,13 +128,16 @@ func TestForecastColdStartFallback(t *testing.T) {
 
 func TestForecastColdStartWithoutCurrentValueReturns503(t *testing.T) {
 	failIfAIServiceCalled(t)
-	fakePrometheusByQuery(t, promRange(), map[string]string{
+	calls := fakePrometheusByQuery(t, promRange(), map[string]string{
 		exporterUpQuery: promInstant(1),
 		// no entry for the cpu instant query: Prometheus errors
 	})
 
 	if rec := getForecast(""); rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want 503", rec.Code)
+	}
+	if n := len(calls.queries); n == 0 || calls.queries[n-1] != metrics["cpu"].instantQuery {
+		t.Errorf("queries = %q, want the last to be the cpu instant query", calls.queries)
 	}
 }
 

@@ -62,7 +62,7 @@ for metric in cpu memory disk network_rx network_tx load1; do
     for endpoint in "metrics/current?metric=$metric" "forecast?metric=$metric&horizon_minutes=30"; do
         OK=false
         for attempt in $(seq 1 12); do
-            if curl -sf "http://localhost:8080/api/v1/$endpoint" > /dev/null; then
+            if curl -sf --max-time 15 "http://localhost:8080/api/v1/$endpoint" > /dev/null; then
                 OK=true
                 break
             fi
@@ -70,7 +70,7 @@ for metric in cpu memory disk network_rx network_tx load1; do
         done
         if [ "$OK" = false ]; then
             echo "Metric check failed: /api/v1/$endpoint"
-            curl -s "http://localhost:8080/api/v1/$endpoint"
+            curl -s --max-time 15 "http://localhost:8080/api/v1/$endpoint"
             exit 1
         fi
         echo "   ok  /api/v1/$endpoint"

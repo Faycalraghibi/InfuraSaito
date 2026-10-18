@@ -68,7 +68,7 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 		// Report the current value: unlike a fixed baseline, it is meaningful for any unit.
 		current, err := queryPrometheus(def.instantQuery)
 		if err != nil {
-			http.Error(w, "Not enough data yet for "+metric+"; retry shortly", http.StatusServiceUnavailable)
+			http.Error(w, "Not enough data yet for "+metric+": "+err.Error()+"; retry shortly", http.StatusServiceUnavailable)
 			return
 		}
 
