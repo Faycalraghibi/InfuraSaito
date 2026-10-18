@@ -65,13 +65,20 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Report the current value: unlike a fixed baseline, it is meaningful for any unit.
+		current, err := queryPrometheus(def.instantQuery)
+		if err != nil {
+			http.Error(w, "Not enough data yet for "+metric+": "+err.Error()+"; retry shortly", http.StatusServiceUnavailable)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(fallbackResponse{
 			MetricName:     metric,
 			HorizonMinutes: horizonMin,
-			Confidence:     "none - insufficient history",
+			Confidence:     "none - insufficient history, showing current value",
 			Predictions: []forecastPoint{
-				{Time: time.Now().UTC().Format(time.RFC3339), Value: 30.0, Lower: 0.0, Upper: 100.0},
+				{Time: time.Now().UTC().Format(time.RFC3339), Value: current, Lower: current, Upper: current},
 			},
 		})
 		return

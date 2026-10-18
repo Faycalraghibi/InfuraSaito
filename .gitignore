@@ -12,3 +12,6 @@ _minted*/
 
 # Technical report (kept local, not tracked)
 report.tex
+
+# Local planning notes (not tracked)
+docs/superpowers/

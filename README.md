@@ -45,19 +45,34 @@ Once the stack is running, traffic is routed through the Go API on port `8080`.
 ### `GET /api/v1/forecast`
 Fetches historical metric data from Prometheus, passes it to the AI service, and returns a time-series forecast.
 * **Parameters**: 
-  * `metric` (default: `cpu`): `cpu` or `memory`. Other values return `400`. Returns `503` if Node Exporter is not being scraped.
+  * `metric` (default: `cpu`): one of the [supported metrics](#supported-metrics). Other values return `400`. Returns `503` if Node Exporter is not being scraped.
   * `horizon_minutes` (default: `60`, max: `10080` = 7 days). Larger values return `400`; non-numeric or non-positive values fall back to `60`.
 * **Example**: `curl "http://localhost:8080/api/v1/forecast?metric=cpu&horizon_minutes=60"`
 
 ### `GET /api/v1/metrics/current`
 Returns the current value of a metric.
 * **Parameters**:
-  * `metric` (default: `cpu`): `cpu` or `memory`. Other values return `400`.
+  * `metric` (default: `cpu`): one of the [supported metrics](#supported-metrics). Other values return `400`.
 * **Example**: `curl "http://localhost:8080/api/v1/metrics/current?metric=memory"`
 
 ### `GET /healthz`
 Liveness probe to verify the Go orchestration API is successfully running.
 * **Example**: `curl http://localhost:8080/healthz`
+
+## Supported Metrics
+
+| `metric` | Unit | Source |
+|---|---|---|
+| `cpu` | % busy | `node_cpu_seconds_total` |
+| `memory` | % used | `node_memory_MemAvailable_bytes` / `MemTotal_bytes` |
+| `disk` | % used of `/` (of Docker's data disk when node-exporter runs in a container) | `node_filesystem_avail_bytes` / `size_bytes` |
+| `network_rx` | bytes/s received on the interfaces node-exporter sees, excluding loopback and container virtual interfaces | `node_network_receive_bytes_total` |
+| `network_tx` | bytes/s sent, same interfaces as `network_rx` | `node_network_transmit_bytes_total` |
+| `load1` | 1-minute load average | `node_load1` |
+
+Under the bundled docker compose setup, node-exporter runs in its own container, so `network_rx`/`network_tx` reflect that container's interface rather than the host's. Run node-exporter on the host (or with `network_mode: host`) for host-wide network figures.
+
+On a cold start (less than about 10 minutes of history), `/forecast` returns the metric's current value with `"confidence": "none - insufficient history, showing current value"`.
 
 ## Configuration
 

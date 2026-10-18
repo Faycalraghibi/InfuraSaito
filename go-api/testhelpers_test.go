@@ -145,3 +145,29 @@ func getCurrent(query string) *httptest.ResponseRecorder {
 	currentMetricsHandler(rec, req)
 	return rec
 }
+
+// fakePrometheusByQuery is like fakePrometheus, but answers instant queries by PromQL:
+// instant maps a query to its response body. Unknown queries get HTTP 500.
+func fakePrometheusByQuery(t *testing.T, rangeBody string, instant map[string]string) *promCalls {
+	t.Helper()
+	calls := &promCalls{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query().Get("query")
+		calls.queries = append(calls.queries, query)
+		body := rangeBody
+		if r.URL.Path == "/api/v1/query" {
+			body = instant[query]
+		}
+		if body == "" {
+			http.Error(w, "fake prometheus error", http.StatusInternalServerError)
+			return
+		}
+		fmt.Fprint(w, body)
+	}))
+	t.Cleanup(srv.Close)
+
+	old := prometheusURL
+	prometheusURL = srv.URL
+	t.Cleanup(func() { prometheusURL = old })
+	return calls
+}
