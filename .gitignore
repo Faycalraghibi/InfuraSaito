@@ -15,3 +15,7 @@ report.tex
 
 # Local planning notes (not tracked)
 docs/superpowers/
+
+# Go build output
+go-api/go-api
+go-api/forecasting-api
