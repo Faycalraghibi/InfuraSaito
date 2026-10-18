@@ -23,6 +23,7 @@ class DataPoint(BaseModel):
 
 class PredictRequest(BaseModel):
     metric_name: str = Field(..., description="Name of the metric (e.g. 'cpu')")
+    instance: str | None = Field(default=None, description="Instance the history belongs to")
     history: list[DataPoint] = Field(..., description="Historical data points")
     horizon_minutes: int = Field(
         default=60, gt=0, le=10080, description="How far ahead to predict (minutes, at most 7 days)"
@@ -38,6 +39,7 @@ class PredictionPoint(BaseModel):
 
 class PredictResponse(BaseModel):
     metric_name: str
+    instance: str | None = None
     horizon_minutes: int
     predictions: list[PredictionPoint]
 
@@ -77,6 +79,7 @@ def predict(req: PredictRequest):
 
     return PredictResponse(
         metric_name=req.metric_name,
+        instance=req.instance,
         horizon_minutes=req.horizon_minutes,
         predictions=[PredictionPoint(**p) for p in predictions],
     )
