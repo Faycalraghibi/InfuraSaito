@@ -161,6 +161,17 @@ else
     exit 1
 fi
 
+echo "Running AI anomaly test (check history against the cached model)..."
+ANOMALY_RESPONSE=$(curl -s --max-time 60 -X POST -H "Content-Type: application/json" \
+    --data-binary @/tmp/train_payload.json http://localhost:5000/anomalies) || true
+if echo "$ANOMALY_RESPONSE" | grep -q '"checked":' && echo "$ANOMALY_RESPONSE" | grep -q '"anomalies":'; then
+    echo "AI Anomaly Test Passed!"
+else
+    echo "AI Anomaly Test Failed! Got:"
+    echo "$ANOMALY_RESPONSE"
+    exit 1
+fi
+
 echo "=========================================="
 echo "Setup complete! The system is running."
 echo "Use 'docker compose down -v' to clean up when you're done."

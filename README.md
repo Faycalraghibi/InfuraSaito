@@ -77,6 +77,13 @@ Answers "when will this metric reach X?" from the same forecast as `/api/v1/fore
 * **Response**: `will_cross` is true when the expected value reaches the threshold within the horizon; `expected_at` is the first predicted time it does, and `possible_at` the first time the upper bound does (an earlier warning). Both are `null` when not reached.
 * **Example**: `curl "http://localhost:8080/api/v1/forecast/threshold?metric=cpu&threshold=80"` → `{"metric_name":"cpu","instance":"node-exporter:9100","threshold":80,"horizon_minutes":60,"will_cross":false,"expected_at":null,"possible_at":null}`
 
+### `GET /api/v1/anomalies`
+Flags recent points that are far from what the trained model expected: more than 3 standard deviations from its expected value, with the standard deviation estimated from the model's 80% uncertainty band (flagging everything outside the band would flag about 1 in 5 normal points).
+* **Parameters**: `metric`, `instance` (as for `/forecast`), `window_minutes` (default `60`, max `1440`): how much recent history to check.
+* **Response**: `checked` (points examined) and `anomalies`, each with `time`, `value`, `expected`, `lower`, `upper` and `deviation` (value minus expected), plus the model's `trained_at`.
+* Returns `503` until background training has produced a model for the metric and instance.
+* **Example**: `curl "http://localhost:8080/api/v1/anomalies?metric=cpu&window_minutes=120"`
+
 ### `GET /api/v1/instances`
 Lists the node-exporter targets Prometheus scrapes and whether each is up.
 * **Example**: `curl http://localhost:8080/api/v1/instances` → `{"instances":[{"instance":"node-exporter:9100","up":true}]}`
