@@ -124,6 +124,8 @@ Grafana runs at [http://localhost:3000](http://localhost:3000) with the Promethe
 * **Actual vs forecast** for every metric: the actual value next to the forecast made 30 minutes earlier and its uncertainty band, with example alert thresholds on CPU (80%), memory and disk (90%). Red markers show anomalies found by the background check; toggle them per metric at the top, next to the instance filter.
 * **API traffic and latency**: requests per second by route and status, rejected requests, p95 latency of the API, of AI service calls and of Prophet training.
 
+The dashboard JSON is generated: edit `infra/grafana/gen_dashboard.py` and run `python3 infra/grafana/gen_dashboard.py` instead of editing `infurasaito.json` by hand.
+
 The forecast lines appear once background training has produced models (a few minutes to fill in, since Prometheus needs some history first).
 
 ## Self-Monitoring
