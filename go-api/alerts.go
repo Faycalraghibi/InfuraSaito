@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -31,27 +34,57 @@ type alertPayload struct {
 	PossibleAt *string `json:"possible_at,omitempty"`
 }
 
-var webhookClient = &http.Client{Timeout: 10 * time.Second}
+// webhookClient treats redirects as failures: following one would turn the POST into a
+// body-less GET that could "succeed" without delivering anything.
+var webhookClient = &http.Client{
+	Timeout: 10 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
 
-// parseAlertRules parses ALERT_RULES: a JSON array of rules. horizon_minutes defaults to 60.
+// parseAlertRules parses ALERT_RULES: a non-empty JSON array of rules. Every rule needs a
+// supported metric and a threshold; horizon_minutes defaults to 60. Unknown fields are
+// rejected so a typo cannot silently become a zero threshold.
 func parseAlertRules(s string) ([]alertRule, error) {
-	var rules []alertRule
-	if err := json.Unmarshal([]byte(s), &rules); err != nil {
+	var raw []struct {
+		Metric         string   `json:"metric"`
+		Threshold      *float64 `json:"threshold"`
+		HorizonMinutes int      `json:"horizon_minutes"`
+	}
+	dec := json.NewDecoder(strings.NewReader(s))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&raw); err != nil {
 		return nil, fmt.Errorf("ALERT_RULES is not a JSON array of rules: %w", err)
 	}
-	for i := range rules {
-		r := &rules[i]
+	if len(raw) == 0 {
+		return nil, errors.New("ALERT_RULES contains no rules")
+	}
+
+	rules := make([]alertRule, len(raw))
+	for i, r := range raw {
 		if _, ok := metrics[r.Metric]; !ok {
 			return nil, fmt.Errorf("ALERT_RULES[%d]: unsupported metric %q; supported: %s", i, r.Metric, supportedMetrics())
 		}
-		if r.HorizonMinutes == 0 {
-			r.HorizonMinutes = 60
+		if r.Threshold == nil {
+			return nil, fmt.Errorf("ALERT_RULES[%d]: threshold is required", i)
 		}
-		if r.HorizonMinutes < 1 || r.HorizonMinutes > maxHorizonMinutes {
+		horizon := r.HorizonMinutes
+		if horizon == 0 {
+			horizon = 60
+		}
+		if horizon < 1 || horizon > maxHorizonMinutes {
 			return nil, fmt.Errorf("ALERT_RULES[%d]: horizon_minutes must be between 1 and %d", i, maxHorizonMinutes)
 		}
+		rules[i] = alertRule{Metric: r.Metric, Threshold: *r.Threshold, HorizonMinutes: horizon}
 	}
 	return rules, nil
+}
+
+// alertKey identifies one rule on one instance.
+type alertKey struct {
+	rule     int
+	instance string
 }
 
 // alerter evaluates rules against cached forecasts and notifies a webhook. An alert is sent
@@ -60,13 +93,14 @@ func parseAlertRules(s string) ([]alertRule, error) {
 type alerter struct {
 	rules      []alertRule
 	webhookURL string
+	now        func() time.Time
 
 	mu     sync.Mutex
-	firing map[string]bool // keyed by rule index and instance
+	firing map[alertKey]bool
 }
 
 func newAlerter(rules []alertRule, webhookURL string) *alerter {
-	return &alerter{rules: rules, webhookURL: webhookURL, firing: map[string]bool{}}
+	return &alerter{rules: rules, webhookURL: webhookURL, now: time.Now, firing: map[alertKey]bool{}}
 }
 
 // alerterFromEnv builds the alerter from ALERT_RULES and ALERT_WEBHOOK_URL. It returns nil
@@ -80,15 +114,18 @@ func alerterFromEnv() (*alerter, error) {
 	if err != nil {
 		return nil, err
 	}
-	url := os.Getenv("ALERT_WEBHOOK_URL")
-	if url == "" {
+	webhook := os.Getenv("ALERT_WEBHOOK_URL")
+	if webhook == "" {
 		return nil, errors.New("ALERT_RULES is set but ALERT_WEBHOOK_URL is empty")
 	}
-	return newAlerter(rules, url), nil
+	return newAlerter(rules, webhook), nil
 }
 
 // evaluate checks every rule for every healthy instance, using the cached forecasts.
-// Instances without a cached model yet are skipped until a later run.
+// It runs on the trainer goroutine, serially; with an open circuit breaker it stops early.
+//
+// A firing alert stays firing while its instance is down or its forecast is unavailable;
+// it is resolved when the forecast clears or the instance is no longer scraped at all.
 func (a *alerter) evaluate() {
 	ups, err := queryPrometheusInstant(nodeUpQuery)
 	if err != nil {
@@ -99,6 +136,11 @@ func (a *alerter) evaluate() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	present := map[string]bool{}
+	for _, up := range ups {
+		present[up.Instance] = true
+	}
+
 	for i, rule := range a.rules {
 		for _, up := range ups {
 			if up.Value != 1 {
@@ -106,7 +148,12 @@ func (a *alerter) evaluate() {
 			}
 			body, err := forecastFromCache(rule.Metric, up.Instance, rule.HorizonMinutes)
 			if err != nil {
-				if !errors.Is(err, errNoCachedModel) {
+				var openErr *circuitOpenError
+				switch {
+				case errors.As(err, &openErr):
+					log.Printf("alerts: evaluation stopped: %v", err)
+					return
+				case !errors.Is(err, errNoCachedModel):
 					log.Printf("alerts: forecast for %s/%s failed: %v", rule.Metric, up.Instance, err)
 				}
 				continue
@@ -117,18 +164,28 @@ func (a *alerter) evaluate() {
 				continue
 			}
 
-			key := fmt.Sprintf("%d|%s", i, up.Instance)
+			key := alertKey{i, up.Instance}
 			c := firstCrossing(forecast.Predictions, rule.Threshold)
 			switch {
 			case c.WillCross && !a.firing[key]:
-				if a.notify(firingPayload(rule, up.Instance, c)) {
+				if a.notify(a.firingPayload(rule, up.Instance, c)) {
 					a.firing[key] = true
 				}
 			case !c.WillCross && a.firing[key]:
-				if a.notify(resolvedPayload(rule, up.Instance)) {
+				if a.notify(resolvedPayload(rule, up.Instance, "is no longer forecast to reach")) {
 					delete(a.firing, key)
 				}
 			}
+		}
+	}
+
+	// Resolve alerts for targets Prometheus no longer scrapes, so they don't stay open forever.
+	for key := range a.firing {
+		if present[key.instance] {
+			continue
+		}
+		if a.notify(resolvedPayload(a.rules[key.rule], key.instance, "is no longer monitored; stopped alerting on")) {
+			delete(a.firing, key)
 		}
 	}
 }
@@ -143,11 +200,17 @@ func (a *alerter) notify(p alertPayload) bool {
 	}
 	resp, err := webhookClient.Post(a.webhookURL, "application/json", bytes.NewReader(data))
 	if err != nil {
+		// The URL is a credential (e.g. a Slack webhook token); never log it.
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			err = urlErr.Err
+		}
 		log.Printf("alerts: webhook failed: %v", err)
 		return false
 	}
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
 	resp.Body.Close()
-	if resp.StatusCode >= 300 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		log.Printf("alerts: webhook returned status %d", resp.StatusCode)
 		return false
 	}
@@ -155,8 +218,15 @@ func (a *alerter) notify(p alertPayload) bool {
 	return true
 }
 
-func firingPayload(rule alertRule, instance string, c crossing) alertPayload {
-	text := fmt.Sprintf("InfuraSaito: %s is forecast to reach %g at %s", target(rule.Metric, instance), rule.Threshold, *c.ExpectedAt)
+func (a *alerter) firingPayload(rule alertRule, instance string, c crossing) alertPayload {
+	// Cached forecasts start at the model's last training point, so the first crossing can
+	// already be in the past: the metric is at or above the threshold now.
+	var text string
+	if at, err := time.Parse(time.RFC3339, *c.ExpectedAt); err == nil && !at.After(a.now()) {
+		text = fmt.Sprintf("InfuraSaito: %s is at or above %g (forecast %s)", target(rule.Metric, instance), rule.Threshold, *c.ExpectedAt)
+	} else {
+		text = fmt.Sprintf("InfuraSaito: %s is forecast to reach %g at %s", target(rule.Metric, instance), rule.Threshold, *c.ExpectedAt)
+	}
 	if c.PossibleAt != nil && *c.PossibleAt != *c.ExpectedAt {
 		text += fmt.Sprintf(" (possibly from %s)", *c.PossibleAt)
 	}
@@ -171,10 +241,10 @@ func firingPayload(rule alertRule, instance string, c crossing) alertPayload {
 	}
 }
 
-func resolvedPayload(rule alertRule, instance string) alertPayload {
+func resolvedPayload(rule alertRule, instance, reason string) alertPayload {
 	return alertPayload{
-		Text: fmt.Sprintf("InfuraSaito: %s is no longer forecast to reach %g within %d minutes",
-			target(rule.Metric, instance), rule.Threshold, rule.HorizonMinutes),
+		Text: fmt.Sprintf("InfuraSaito: %s %s %g within %d minutes",
+			target(rule.Metric, instance), reason, rule.Threshold, rule.HorizonMinutes),
 		Status:    "resolved",
 		Metric:    rule.Metric,
 		Instance:  instance,
