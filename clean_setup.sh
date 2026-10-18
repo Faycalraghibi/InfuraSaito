@@ -26,7 +26,7 @@ echo "Running Integration Test..."
 # Retry while Prometheus completes its first scrape (the API returns 503 until then).
 RESPONSE=""
 for attempt in $(seq 1 12); do
-    if RESPONSE=$(curl -sf "http://localhost:8080/api/v1/forecast?metric=cpu&horizon_minutes=60"); then
+    if RESPONSE=$(curl -sf -H "X-API-Key: ${API_KEY:-}" "http://localhost:8080/api/v1/forecast?metric=cpu&horizon_minutes=60"); then
         break
     fi
     echo "   ...forecast not ready yet (attempt $attempt/12)"
@@ -48,7 +48,7 @@ for metric in cpu memory disk network_rx network_tx load1; do
     for endpoint in "metrics/current?metric=$metric" "forecast?metric=$metric&horizon_minutes=30"; do
         OK=false
         for attempt in $(seq 1 12); do
-            if curl -sf --max-time 15 "http://localhost:8080/api/v1/$endpoint" > /dev/null; then
+            if curl -sf --max-time 15 -H "X-API-Key: ${API_KEY:-}" "http://localhost:8080/api/v1/$endpoint" > /dev/null; then
                 OK=true
                 break
             fi
@@ -56,7 +56,7 @@ for metric in cpu memory disk network_rx network_tx load1; do
         done
         if [ "$OK" = false ]; then
             echo "Metric check failed: /api/v1/$endpoint"
-            curl -s --max-time 15 "http://localhost:8080/api/v1/$endpoint"
+            curl -s --max-time 15 -H "X-API-Key: ${API_KEY:-}" "http://localhost:8080/api/v1/$endpoint"
             exit 1
         fi
         echo "   ok  /api/v1/$endpoint"
@@ -64,13 +64,24 @@ for metric in cpu memory disk network_rx network_tx load1; do
 done
 
 echo "Checking instance listing..."
-INSTANCES=$(curl -s --max-time 15 http://localhost:8080/api/v1/instances) || true
+INSTANCES=$(curl -s --max-time 15 -H "X-API-Key: ${API_KEY:-}" http://localhost:8080/api/v1/instances) || true
 if echo "$INSTANCES" | grep -q '"instance":"node-exporter:9100","up":true'; then
     echo "   ok  /api/v1/instances"
 else
     echo "Instance listing failed. Got:"
     echo "$INSTANCES"
     exit 1
+fi
+
+if [ -n "${API_KEY:-}" ]; then
+    echo "Checking that /api/ rejects requests without the API key..."
+    STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8080/api/v1/instances) || true
+    if [ "$STATUS" = "401" ]; then
+        echo "   ok  401 without X-API-Key"
+    else
+        echo "Expected 401 without X-API-Key, got $STATUS"
+        exit 1
+    fi
 fi
 
 echo "Waiting for AI Service..."

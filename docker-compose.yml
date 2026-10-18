@@ -39,6 +39,8 @@ services:
     environment:
       PROMETHEUS_URL: "http://prometheus:9090"
       AI_SERVICE_URL: "http://ai-service:5000"
+      # Optional: set API_KEY in your shell to require X-API-Key on /api/ routes.
+      API_KEY: "${API_KEY:-}"
     depends_on:
       prometheus:
         condition: service_healthy

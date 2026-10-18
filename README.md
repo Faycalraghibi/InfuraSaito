@@ -44,6 +44,13 @@ Every service has a healthcheck, and the Go API starts only once Prometheus and 
 
 Once the stack is running, traffic is routed through the Go API on port `8080`.
 
+**Authentication and rate limiting.** When `API_KEY` is set, every `/api/` route requires the header `X-API-Key: <key>` and returns `401` without it; `/healthz` stays open. All `/api/` routes share one rate limit (default 10 requests/s, burst 20); over the limit they return `429` with `Retry-After`. The limit is global and also counts requests without a valid key, so it slows key guessing but lets any client use up the shared budget; put a per-client limiter or proxy in front for multi-tenant use. When `API_KEY` is set, add `-H "X-API-Key: <key>"` to the examples below.
+
+```bash
+API_KEY=change-me docker compose up -d --build --wait
+curl -H "X-API-Key: change-me" "http://localhost:8080/api/v1/forecast?metric=cpu"
+```
+
 ### `GET /api/v1/forecast`
 Fetches historical metric data from Prometheus, passes it to the AI service, and returns a time-series forecast.
 * **Parameters**: 
@@ -92,6 +99,9 @@ On a cold start (less than about 10 minutes of history), `/forecast` returns the
 | `PROM_TIMEOUT` | `10s` | Timeout for each Prometheus request (Go duration) |
 | `AI_TIMEOUT` | `60s` | Timeout for each AI service request (Go duration) |
 | `PORT` | `8080` | Go API listen port |
+| `API_KEY` | unset | When set, `/api/` routes require `X-API-Key` with this value |
+| `RATE_LIMIT_RPS` | `10` | Requests per second allowed across all `/api/` routes; `0` disables limiting |
+| `RATE_LIMIT_BURST` | `20` | Requests allowed in a burst above the steady rate |
 
 ## Running Tests
 
