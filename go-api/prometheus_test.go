@@ -97,3 +97,23 @@ func TestQueryPrometheusRangeTimesOut(t *testing.T) {
 		t.Errorf("took %s, want the 50ms client timeout to apply", elapsed)
 	}
 }
+
+func TestQueryPrometheusRangeSkipsShortRows(t *testing.T) {
+	body := `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{},"values":[` +
+		`[1700000000,"1"],[1700000300],[]]}]}}`
+	fakePrometheus(t, body, "")
+
+	pts, err := queryPrometheusRange("q", time.Unix(0, 0), time.Unix(600, 0), "5m")
+
+	if err != nil || len(pts) != 1 || pts[0].Y != 1 {
+		t.Errorf("got (%+v, %v), want only the one complete row", pts, err)
+	}
+}
+
+func TestQueryPrometheusShortValueIsError(t *testing.T) {
+	fakePrometheus(t, "", `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1700000000]}]}}`)
+
+	if _, err := queryPrometheus("q"); err == nil {
+		t.Error("want error for a value without a sample, got nil")
+	}
+}

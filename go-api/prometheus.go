@@ -54,6 +54,9 @@ func queryPrometheusRange(query string, start, end time.Time, step string) ([]Da
 
 	var dataPoints []DataPoint
 	for _, valArr := range promResp.Data.Result[0].Values {
+		if len(valArr) < 2 {
+			continue // Skip rows without both timestamp and value
+		}
 		// valArr is [timestamp_float, "value_string"]
 		tsFloat, ok1 := valArr[0].(float64)
 		valStr, ok2 := valArr[1].(string)
@@ -103,7 +106,11 @@ func queryPrometheus(query string) (float64, error) {
 	}
 
 	// Value is typically [timestamp, "string_value"]
-	valStr, ok := promResp.Data.Result[0].Value[1].(string)
+	value := promResp.Data.Result[0].Value
+	if len(value) < 2 {
+		return 0, fmt.Errorf("unexpected value format from Prometheus")
+	}
+	valStr, ok := value[1].(string)
 	if !ok {
 		return 0, fmt.Errorf("unexpected value format from Prometheus")
 	}
