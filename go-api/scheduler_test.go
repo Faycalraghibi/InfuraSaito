@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"sort"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -100,11 +101,15 @@ func TestStartTrainerRetriesUntilFirstSuccess(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	})
 
-	startTrainer(ctx, time.Hour)
+	var afterRuns atomic.Int32
+	startTrainer(ctx, time.Hour, func() { afterRuns.Add(1) })
 	time.Sleep(150 * time.Millisecond)
 	cancel()
 
 	if n := prom.count(); n <= len(metrics) {
 		t.Errorf("Prometheus range queries = %d, want more than %d (a retry after the empty first run)", n, len(metrics))
+	}
+	if n := afterRuns.Load(); n < 2 {
+		t.Errorf("afterRun called %d times, want once per training run (at least 2)", n)
 	}
 }

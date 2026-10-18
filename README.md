@@ -115,6 +115,24 @@ On a cold start (less than about 10 minutes of history), `/forecast` returns the
 | `TRAIN_INTERVAL` | `15m` | How often the Go API retrains cached models for every metric and instance (Go duration); `0` disables background training |
 | `AI_BREAKER_THRESHOLD` | `5` | Consecutive AI service failures that open the circuit breaker; `0` disables it |
 | `AI_BREAKER_COOLDOWN` | `30s` | How long the breaker stays open before letting a probe request through (Go duration) |
+| `ALERT_RULES` | unset | JSON array of alert rules (see [Alerts](#alerts)) |
+| `ALERT_WEBHOOK_URL` | unset | Webhook that receives alerts; required when `ALERT_RULES` is set |
+
+## Alerts
+
+The Go API can warn you before a metric crosses a threshold. After each background training run, every rule is checked against the forecast for every healthy instance:
+
+```bash
+ALERT_RULES='[{"metric":"cpu","threshold":80,"horizon_minutes":60},{"metric":"disk","threshold":90}]' \
+ALERT_WEBHOOK_URL=https://hooks.slack.com/services/... \
+docker compose up -d --build --wait
+```
+
+* `horizon_minutes` defaults to `60` (max `10080`). An invalid rule stops the API at startup with a clear error.
+* When a crossing is first predicted, the webhook receives a JSON `POST` with `status: "firing"`, `metric`, `instance`, `threshold`, `expected_at`, `possible_at` and a human-readable `text` (so a Slack incoming webhook displays it directly).
+* Repeats are suppressed while the crossing stays predicted; when the forecast clears, one `status: "resolved"` message is sent.
+* If the webhook fails, the alert is retried on the next run. Instances without a trained model yet are skipped until one exists.
+* Alerts are evaluated after background training, so they need `TRAIN_INTERVAL` to be non-zero.
 
 ## Running Tests
 

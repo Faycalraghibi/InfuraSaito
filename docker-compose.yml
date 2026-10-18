@@ -42,6 +42,10 @@ services:
       AI_SERVICE_URL: "http://ai-service:5000"
       # Optional: set API_KEY in your shell to require X-API-Key on /api/ routes.
       API_KEY: "${API_KEY:-}"
+      # Optional: forecast alerts (see README "Alerts").
+      ALERT_RULES: "${ALERT_RULES:-}"
+      ALERT_WEBHOOK_URL: "${ALERT_WEBHOOK_URL:-}"
+      TRAIN_INTERVAL: "${TRAIN_INTERVAL:-15m}"
     depends_on:
       prometheus:
         condition: service_healthy

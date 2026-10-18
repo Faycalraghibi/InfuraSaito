@@ -7,6 +7,14 @@ import (
 	"strconv"
 )
 
+// forecastBody is the part of a forecast response (AI service or fallback) that callers read.
+type forecastBody struct {
+	MetricName     string          `json:"metric_name"`
+	Instance       string          `json:"instance"`
+	HorizonMinutes int             `json:"horizon_minutes"`
+	Predictions    []forecastPoint `json:"predictions"`
+}
+
 // crossing describes when a forecast first reaches a threshold.
 type crossing struct {
 	// WillCross is true when the expected value reaches the threshold within the horizon.
@@ -55,12 +63,7 @@ func thresholdHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var forecast struct {
-		MetricName     string          `json:"metric_name"`
-		Instance       string          `json:"instance"`
-		HorizonMinutes int             `json:"horizon_minutes"`
-		Predictions    []forecastPoint `json:"predictions"`
-	}
+	var forecast forecastBody
 	if err := json.Unmarshal(body, &forecast); err != nil {
 		http.Error(w, "AI Forecasting failed: unreadable forecast: "+err.Error(), http.StatusBadGateway)
 		return
