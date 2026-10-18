@@ -99,12 +99,15 @@ func TestForecastColdStartFallback(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			failIfAIServiceCalled(t)
-			fakePrometheus(t, tc.rangeBody, promInstant(1))
+			fakePrometheusByQuery(t, tc.rangeBody, map[string]string{
+				exporterUpQuery:                    promInstant(1),
+				metrics["network_rx"].instantQuery: promInstant(1234.5),
+			})
 
-			rec := getForecast("metric=cpu&horizon_minutes=15")
+			rec := getForecast("metric=network_rx&horizon_minutes=15")
 
 			if rec.Code != http.StatusOK {
-				t.Fatalf("status = %d, want 200", rec.Code)
+				t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body)
 			}
 			if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
 				t.Errorf("Content-Type = %q, want application/json", ct)
@@ -113,10 +116,25 @@ func TestForecastColdStartFallback(t *testing.T) {
 			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 				t.Fatalf("invalid JSON: %v", err)
 			}
-			if body.MetricName != "cpu" || body.HorizonMinutes != 15 || len(body.Predictions) != 1 {
-				t.Errorf("fallback = %+v, want cpu/15 with 1 prediction", body)
+			if body.MetricName != "network_rx" || body.HorizonMinutes != 15 || len(body.Predictions) != 1 {
+				t.Fatalf("fallback = %+v, want network_rx/15 with 1 prediction", body)
+			}
+			if p := body.Predictions[0]; p.Value != 1234.5 || p.Lower != 1234.5 || p.Upper != 1234.5 {
+				t.Errorf("prediction = %+v, want the current value 1234.5 for value, lower and upper", p)
 			}
 		})
+	}
+}
+
+func TestForecastColdStartWithoutCurrentValueReturns503(t *testing.T) {
+	failIfAIServiceCalled(t)
+	fakePrometheusByQuery(t, promRange(), map[string]string{
+		exporterUpQuery: promInstant(1),
+		// no entry for the cpu instant query: Prometheus errors
+	})
+
+	if rec := getForecast(""); rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503", rec.Code)
 	}
 }
 
