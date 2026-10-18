@@ -73,6 +73,17 @@ else
     exit 1
 fi
 
+echo "Checking the forecast accuracy endpoint (Postgres-backed)..."
+ACCURACY=$(curl -s --max-time 15 -H "X-API-Key: ${API_KEY:-}" \
+    "http://localhost:8080/api/v1/forecast/accuracy?metric=cpu&days=1") || true
+if echo "$ACCURACY" | grep -q '"compared":'; then
+    echo "   ok  /api/v1/forecast/accuracy"
+else
+    echo "Accuracy check failed. Got:"
+    echo "$ACCURACY"
+    exit 1
+fi
+
 echo "Checking the threshold endpoint..."
 THRESHOLD=$(curl -s --max-time 15 -H "X-API-Key: ${API_KEY:-}" \
     "http://localhost:8080/api/v1/forecast/threshold?metric=cpu&threshold=1000") || true

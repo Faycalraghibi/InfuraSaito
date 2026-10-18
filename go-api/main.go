@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
 
 var prometheusURL string
@@ -23,14 +24,36 @@ func main() {
 	}
 	router := newRouter(apiKey, rateLimiterFromEnv())
 
+	if url := os.Getenv("DATABASE_URL"); url != "" {
+		// A set but unreachable DATABASE_URL stops startup, like an invalid alert config.
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		store, err := openStore(ctx, url)
+		cancel()
+		if err != nil {
+			log.Fatalf("Forecast storage: %v", err)
+		}
+		forecasts = store
+		log.Println("Recording forecasts after each training run")
+	} else {
+		log.Println("DATABASE_URL not set, forecasts are not stored (accuracy endpoint disabled)")
+	}
+
 	alerts, err := alerterFromEnv()
 	if err != nil {
 		log.Fatalf("Invalid alert configuration: %v", err)
 	}
-	var afterTraining func()
 	if alerts != nil {
 		log.Printf("Alerting on %d rule(s) after each training run", len(alerts.rules))
-		afterTraining = alerts.evaluate
+	}
+	afterTraining := func() {
+		// Alerts first: they don't depend on the database, so a slow one can't delay them.
+		if alerts != nil {
+			alerts.evaluate()
+		}
+		// Bound the database work so a stalled Postgres can't block the trainer loop.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		recordForecasts(ctx)
 	}
 
 	if interval := trainIntervalFromEnv(); interval > 0 {
@@ -38,8 +61,8 @@ func main() {
 		startTrainer(context.Background(), interval, afterTraining)
 	} else {
 		log.Println("Background training disabled (TRAIN_INTERVAL=0)")
-		if alerts != nil {
-			log.Println("Alert rules are configured but never evaluated: they run after background training")
+		if alerts != nil || forecasts != nil {
+			log.Println("Alerts and forecast recording are configured but never run: they run after background training")
 		}
 	}
 
