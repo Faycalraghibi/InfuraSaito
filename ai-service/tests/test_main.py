@@ -52,3 +52,15 @@ def test_predict_rejects_out_of_range_horizon(client, history, horizon):
     )
 
     assert resp.status_code == 422
+
+
+@pytest.mark.parametrize("instance", ["node-a:9100", None])
+def test_predict_echoes_instance(client, history, instance):
+    payload = {"metric_name": "cpu", "history": history, "horizon_minutes": 30}
+    if instance is not None:
+        payload["instance"] = instance
+
+    resp = client.post("/predict", json=payload)
+
+    assert resp.status_code == 200
+    assert resp.json()["instance"] == instance

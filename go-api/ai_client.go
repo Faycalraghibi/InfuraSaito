@@ -16,6 +16,7 @@ type DataPoint struct {
 
 type PredictRequest struct {
 	MetricName     string      `json:"metric_name"`
+	Instance       string      `json:"instance,omitempty"`
 	History        []DataPoint `json:"history"`
 	HorizonMinutes int         `json:"horizon_minutes"`
 }
@@ -29,9 +30,10 @@ func init() {
 	}
 }
 
-func callForecastModel(metric string, history []DataPoint, horizonMin int) ([]byte, error) {
+func callForecastModel(metric, instance string, history []DataPoint, horizonMin int) ([]byte, error) {
 	reqBody := PredictRequest{
 		MetricName:     metric,
+		Instance:       instance,
 		History:        history,
 		HorizonMinutes: horizonMin,
 	}

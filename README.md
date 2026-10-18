@@ -45,15 +45,22 @@ Once the stack is running, traffic is routed through the Go API on port `8080`.
 ### `GET /api/v1/forecast`
 Fetches historical metric data from Prometheus, passes it to the AI service, and returns a time-series forecast.
 * **Parameters**: 
-  * `metric` (default: `cpu`): one of the [supported metrics](#supported-metrics). Other values return `400`. Returns `503` if Node Exporter is not being scraped.
+  * `metric` (default: `cpu`): one of the [supported metrics](#supported-metrics). Other values return `400`. Returns `503` if the (chosen) node-exporter target is not being scraped or has no data yet.
   * `horizon_minutes` (default: `60`, max: `10080` = 7 days). Larger values return `400`; non-numeric or non-positive values fall back to `60`.
+  * `instance` (optional): the node-exporter instance, e.g. `node-exporter:9100`. Required when Prometheus scrapes more than one instance (`400` lists them); an unknown instance returns `404`.
 * **Example**: `curl "http://localhost:8080/api/v1/forecast?metric=cpu&horizon_minutes=60"`
 
 ### `GET /api/v1/metrics/current`
 Returns the current value of a metric.
+Returns `503` when there is no data yet.
 * **Parameters**:
   * `metric` (default: `cpu`): one of the [supported metrics](#supported-metrics). Other values return `400`.
+  * `instance` (optional): the node-exporter instance, e.g. `node-exporter:9100`. Required when Prometheus scrapes more than one instance (`400` lists them); an unknown instance returns `404`.
 * **Example**: `curl "http://localhost:8080/api/v1/metrics/current?metric=memory"`
+
+### `GET /api/v1/instances`
+Lists the node-exporter targets Prometheus scrapes and whether each is up.
+* **Example**: `curl http://localhost:8080/api/v1/instances` → `{"instances":[{"instance":"node-exporter:9100","up":true}]}`
 
 ### `GET /healthz`
 Liveness probe to verify the Go orchestration API is successfully running.

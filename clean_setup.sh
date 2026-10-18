@@ -77,6 +77,16 @@ for metric in cpu memory disk network_rx network_tx load1; do
     done
 done
 
+echo "Checking instance listing..."
+INSTANCES=$(curl -s --max-time 15 http://localhost:8080/api/v1/instances) || true
+if echo "$INSTANCES" | grep -q '"instance":"node-exporter:9100","up":true'; then
+    echo "   ok  /api/v1/instances"
+else
+    echo "Instance listing failed. Got:"
+    echo "$INSTANCES"
+    exit 1
+fi
+
 echo "Waiting for AI Service..."
 AI_READY=false
 for attempt in $(seq 1 24); do

@@ -21,22 +21,49 @@ func TestMain(m *testing.M) {
 
 const promEmptyVector = `{"status":"success","data":{"resultType":"vector","result":[]}}`
 
-// promRange builds a query_range response with one series, 5 minutes apart.
-func promRange(values ...float64) string {
+// promLabels renders the metric labels for a series: {} for "", else {"instance":...}.
+func promLabels(instance string) string {
+	if instance == "" {
+		return "{}"
+	}
+	return fmt.Sprintf(`{"instance":%q}`, instance)
+}
+
+// promSeriesJSON builds one matrix series for instance, points 5 minutes apart.
+func promSeriesJSON(instance string, values ...float64) string {
 	pts := make([]string, len(values))
 	for i, v := range values {
 		pts[i] = fmt.Sprintf(`[%d,"%g"]`, 1700000000+i*300, v)
 	}
-	if len(pts) == 0 {
-		return `{"status":"success","data":{"resultType":"matrix","result":[]}}`
-	}
-	return fmt.Sprintf(`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{},"values":[%s]}]}}`,
-		strings.Join(pts, ","))
+	return fmt.Sprintf(`{"metric":%s,"values":[%s]}`, promLabels(instance), strings.Join(pts, ","))
 }
 
-// promInstant builds an instant-query response with one sample.
+// promMatrix builds a query_range response from promSeriesJSON series.
+func promMatrix(series ...string) string {
+	return fmt.Sprintf(`{"status":"success","data":{"resultType":"matrix","result":[%s]}}`, strings.Join(series, ","))
+}
+
+// promRange builds a query_range response with one unlabelled series, 5 minutes apart.
+func promRange(values ...float64) string {
+	if len(values) == 0 {
+		return promMatrix()
+	}
+	return promMatrix(promSeriesJSON("", values...))
+}
+
+// promSampleJSON builds one vector sample for instance.
+func promSampleJSON(instance string, v float64) string {
+	return fmt.Sprintf(`{"metric":%s,"value":[1700000000,"%g"]}`, promLabels(instance), v)
+}
+
+// promVector builds an instant-query response from promSampleJSON samples.
+func promVector(samples ...string) string {
+	return fmt.Sprintf(`{"status":"success","data":{"resultType":"vector","result":[%s]}}`, strings.Join(samples, ","))
+}
+
+// promInstant builds an instant-query response with one unlabelled sample.
 func promInstant(v float64) string {
-	return fmt.Sprintf(`{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1700000000,"%g"]}]}}`, v)
+	return promVector(promSampleJSON("", v))
 }
 
 // promCalls records the PromQL queries the fake Prometheus received, in order.
@@ -170,4 +197,12 @@ func fakePrometheusByQuery(t *testing.T, rangeBody string, instant map[string]st
 	prometheusURL = srv.URL
 	t.Cleanup(func() { prometheusURL = old })
 	return calls
+}
+
+// getInstances calls instancesHandler.
+func getInstances() *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/instances", nil)
+	rec := httptest.NewRecorder()
+	instancesHandler(rec, req)
+	return rec
 }
