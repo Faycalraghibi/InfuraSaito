@@ -116,13 +116,12 @@ func toStoredPredictions(points []forecastPoint) []storedPrediction {
 	return out
 }
 
-// recordForecasts stores the next recordHorizonMinutes of the cached forecast for every
-// metric and healthy instance, so accuracy can be measured once the actual values arrive.
-// It runs after each background training run; with an open circuit breaker it stops early.
+// recordForecasts fetches the cached forecast for every metric and healthy instance,
+// exports its 30-minutes-ahead prediction as the infurasaito_forecast gauges and, when
+// storage is configured, stores the next recordHorizonMinutes so accuracy can be measured
+// once the actual values arrive. It runs after each background training run; with an
+// open circuit breaker it stops early.
 func recordForecasts(ctx context.Context) {
-	if forecasts == nil {
-		return
-	}
 	ups, err := queryPrometheusInstant(nodeUpQuery)
 	if err != nil {
 		log.Printf("recording forecasts: listing instances failed: %v", err)
@@ -134,6 +133,9 @@ func recordForecasts(ctx context.Context) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+
+	// Drop gauges for instances that are gone or no longer have a model.
+	forecastGauge.Reset()
 
 	stored := 0
 	for _, name := range names {
@@ -158,8 +160,10 @@ func recordForecasts(ctx context.Context) {
 				log.Printf("recording forecasts: unreadable forecast for %s: %v", target(name, up.Instance), err)
 				continue
 			}
+			exportForecastGauge(name, up.Instance, forecast.Predictions)
+
 			preds := toStoredPredictions(forecast.Predictions)
-			if len(preds) == 0 {
+			if forecasts == nil || len(preds) == 0 {
 				continue
 			}
 			if err := forecasts.save(ctx, name, up.Instance, preds); err != nil {
@@ -169,7 +173,9 @@ func recordForecasts(ctx context.Context) {
 			stored++
 		}
 	}
-	log.Printf("recorded %d forecasts", stored)
+	if forecasts != nil {
+		log.Printf("recorded %d forecasts", stored)
+	}
 }
 
 // accuracyHandler compares the forecasts stored over the last ?days= (default 7, max 30)

@@ -8,3 +8,4 @@ numpy==2.2.6
 holidays==0.106
 matplotlib==3.11.2
 requests==2.32.3
+prometheus-client==0.21.0

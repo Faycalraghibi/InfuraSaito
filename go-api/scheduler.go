@@ -28,6 +28,10 @@ func trainAll() int {
 	sort.Strings(names)
 
 	trained := 0
+	defer func() {
+		modelsTrained.Set(float64(trained))
+		lastTraining.SetToCurrentTime()
+	}()
 	for _, name := range names {
 		seriesList, err := queryPrometheusRange(metrics[name].rangeQuery, start, end, historyStep)
 		if err != nil {

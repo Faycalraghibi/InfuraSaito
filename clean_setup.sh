@@ -73,6 +73,30 @@ else
     exit 1
 fi
 
+echo "Checking that Prometheus scrapes every target (node, go-api, ai-service)..."
+TARGETS_UP=0
+for attempt in $(seq 1 12); do
+    TARGETS_UP=$(curl -s --max-time 10 "http://localhost:9090/api/v1/query?query=up" \
+        | grep -o '"value":\[[^]]*,"1"\]' | wc -l) || true
+    if [ "$TARGETS_UP" -ge 3 ]; then
+        break
+    fi
+    sleep 5
+done
+if [ "$TARGETS_UP" -ge 3 ]; then
+    echo "   ok  $TARGETS_UP Prometheus targets up"
+else
+    echo "Expected 3 Prometheus targets up, got $TARGETS_UP:"
+    curl -s --max-time 10 "http://localhost:9090/api/v1/query?query=up"
+    exit 1
+fi
+if curl -s --max-time 10 http://localhost:8080/metrics | grep -q '^infurasaito_http_requests_total'; then
+    echo "   ok  /metrics"
+else
+    echo "Go API /metrics is missing infurasaito_http_requests_total"
+    exit 1
+fi
+
 echo "Checking the forecast accuracy endpoint (Postgres-backed)..."
 ACCURACY=$(curl -s --max-time 15 -H "X-API-Key: ${API_KEY:-}" \
     "http://localhost:8080/api/v1/forecast/accuracy?metric=cpu&days=1") || true
