@@ -198,3 +198,11 @@ func fakePrometheusByQuery(t *testing.T, rangeBody string, instant map[string]st
 	t.Cleanup(func() { prometheusURL = old })
 	return calls
 }
+
+// getInstances calls instancesHandler.
+func getInstances() *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/instances", nil)
+	rec := httptest.NewRecorder()
+	instancesHandler(rec, req)
+	return rec
+}

@@ -19,6 +19,7 @@ func main() {
 	http.HandleFunc("/healthz", healthzHandler)
 	http.HandleFunc("/api/v1/metrics/current", currentMetricsHandler)
 	http.HandleFunc("/api/v1/forecast", forecastHandler)
+	http.HandleFunc("/api/v1/instances", instancesHandler)
 
 	port := os.Getenv("PORT")
 	if port == "" {
