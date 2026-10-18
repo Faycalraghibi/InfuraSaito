@@ -8,9 +8,6 @@ import (
 	"time"
 )
 
-// exporterUpQuery checks that the node-exporter scrape target is healthy.
-const exporterUpQuery = `max(up{job="node"})`
-
 type forecastPoint struct {
 	Time  string  `json:"time"`
 	Value float64 `json:"value"`
@@ -25,6 +22,12 @@ type fallbackResponse struct {
 	HorizonMinutes int             `json:"horizon_minutes"`
 	Confidence     string          `json:"confidence"`
 	Predictions    []forecastPoint `json:"predictions"`
+}
+
+type currentResponse struct {
+	Metric   string  `json:"metric"`
+	Instance string  `json:"instance,omitempty"`
+	Value    float64 `json:"value"`
 }
 
 // maxHorizonMinutes caps forecasts at 7 days; longer horizons are not meaningful for
@@ -60,8 +63,12 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	series, _, ierr := selectInstance(seriesList, seriesInstance, instance)
 	if ierr != nil {
-		http.Error(w, ierr.msg, ierr.status)
-		return
+		if ierr.status != http.StatusNotFound {
+			http.Error(w, ierr.msg, ierr.status)
+			return
+		}
+		// A new target may have no range history yet; the cold-start path checks it is real.
+		series = promSeries{}
 	}
 	if series.Instance != "" {
 		instance = series.Instance
@@ -71,10 +78,22 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 	if len(history) < 2 {
 		// Only treat short history as a cold start if the exporter is actually up;
 		// otherwise a dead exporter or broken query would hide behind the fallback.
-		up, err := queryPrometheus(exporterUpQuery)
-		if err != nil || up != 1 {
-			http.Error(w, "Metrics source unavailable: node-exporter is not being scraped", http.StatusServiceUnavailable)
+		ups, err := queryPrometheusInstant(nodeUpQuery)
+		if err != nil {
+			http.Error(w, "Metrics source unavailable: "+err.Error(), http.StatusServiceUnavailable)
 			return
+		}
+		target, found, ierr := selectInstance(ups, sampleInstance, instance)
+		if ierr != nil {
+			http.Error(w, ierr.msg, ierr.status)
+			return
+		}
+		if !found || target.Value != 1 {
+			http.Error(w, "Metrics source unavailable: node-exporter "+instanceLabel(instance)+"is not being scraped", http.StatusServiceUnavailable)
+			return
+		}
+		if target.Instance != "" {
+			instance = target.Instance
 		}
 
 		// Report the current value: unlike a fixed baseline, it is meaningful for any unit.
@@ -139,11 +158,7 @@ func currentMetricsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
-		"metric":   metric,
-		"instance": sample.Instance,
-		"value":    sample.Value,
-	}
+	response := currentResponse{Metric: metric, Instance: sample.Instance, Value: sample.Value}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)

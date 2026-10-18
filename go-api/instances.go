@@ -50,6 +50,14 @@ func instanceNames[T any](items []T, instanceOf func(T) string) string {
 	return strings.Join(names, ", ")
 }
 
+// instanceLabel renders instance for a message: "name " or "" when none was given.
+func instanceLabel(instance string) string {
+	if instance == "" {
+		return ""
+	}
+	return instance + " "
+}
+
 func seriesInstance(s promSeries) string { return s.Instance }
 func sampleInstance(s promSample) string { return s.Instance }
 

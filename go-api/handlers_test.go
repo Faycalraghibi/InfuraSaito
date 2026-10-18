@@ -100,7 +100,7 @@ func TestForecastColdStartFallback(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			failIfAIServiceCalled(t)
 			fakePrometheusByQuery(t, tc.rangeBody, map[string]string{
-				exporterUpQuery:                    promInstant(1),
+				nodeUpQuery:                        promInstant(1),
 				metrics["network_rx"].instantQuery: promInstant(1234.5),
 			})
 
@@ -129,7 +129,7 @@ func TestForecastColdStartFallback(t *testing.T) {
 func TestForecastColdStartWithoutCurrentValueReturns503(t *testing.T) {
 	failIfAIServiceCalled(t)
 	calls := fakePrometheusByQuery(t, promRange(), map[string]string{
-		exporterUpQuery: promInstant(1),
+		nodeUpQuery: promInstant(1),
 		// no entry for the cpu instant query: Prometheus errors
 	})
 
@@ -318,7 +318,7 @@ func TestForecastUnknownInstanceReturns404(t *testing.T) {
 func TestForecastColdStartUsesChosenInstanceValue(t *testing.T) {
 	failIfAIServiceCalled(t)
 	fakePrometheusByQuery(t, promRange(), map[string]string{
-		exporterUpQuery:             promInstant(1),
+		nodeUpQuery:                 promVector(promSampleJSON("a:9100", 1), promSampleJSON("b:9100", 1)),
 		metrics["cpu"].instantQuery: promVector(promSampleJSON("a:9100", 10), promSampleJSON("b:9100", 20)),
 	})
 
@@ -370,5 +370,60 @@ func TestCurrentMetricNoDataReturns503(t *testing.T) {
 
 	if rec := getCurrent(""); rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want 503", rec.Code)
+	}
+}
+
+func TestForecastColdStartWithChosenInstanceDown(t *testing.T) {
+	failIfAIServiceCalled(t)
+	fakePrometheusByQuery(t, promRange(), map[string]string{
+		nodeUpQuery: promVector(promSampleJSON("a:9100", 1), promSampleJSON("b:9100", 0)),
+	})
+
+	rec := getForecast("instance=b:9100")
+
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "b:9100") {
+		t.Errorf("got %d %q, want 503 naming b:9100", rec.Code, rec.Body)
+	}
+}
+
+func TestForecastColdStartUnknownInstanceReturns404(t *testing.T) {
+	failIfAIServiceCalled(t)
+	fakePrometheusByQuery(t, promRange(), map[string]string{
+		nodeUpQuery: promVector(promSampleJSON("a:9100", 1), promSampleJSON("b:9100", 0)),
+	})
+
+	if rec := getForecast("instance=zzz:9100"); rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestForecastInstanceOnlyInInstantDataUsesColdStart(t *testing.T) {
+	failIfAIServiceCalled(t)
+	fakePrometheusByQuery(t, promMatrix(promSeriesJSON("a:9100", 1, 2)), map[string]string{
+		nodeUpQuery:                 promVector(promSampleJSON("a:9100", 1), promSampleJSON("c:9100", 1)),
+		metrics["cpu"].instantQuery: promVector(promSampleJSON("c:9100", 7)),
+	})
+
+	rec := getForecast("instance=c:9100")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body)
+	}
+	var body fallbackResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Instance != "c:9100" || len(body.Predictions) != 1 || body.Predictions[0].Value != 7 {
+		t.Errorf("fallback = %+v, want c:9100 with value 7", body)
+	}
+}
+
+func TestCurrentMetricOmitsEmptyInstance(t *testing.T) {
+	fakePrometheus(t, "", promInstant(5))
+
+	rec := getCurrent("")
+
+	if strings.Contains(rec.Body.String(), `"instance"`) {
+		t.Errorf("body = %s, want no instance key", rec.Body)
 	}
 }
