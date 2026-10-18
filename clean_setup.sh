@@ -86,7 +86,8 @@ history = [
 print(json.dumps({"metric_name": "cpu", "history": history, "horizon_minutes": 30}))
 ' > /tmp/predict_payload.json
 
-AI_RESPONSE=$(curl -s --max-time 120 -X POST -H "Content-Type: application/json"     --data-binary @/tmp/predict_payload.json http://localhost:5000/predict) || true
+AI_RESPONSE=$(curl -s --max-time 120 -X POST -H "Content-Type: application/json" \
+    --data-binary @/tmp/predict_payload.json http://localhost:5000/predict) || true
 
 if echo "$AI_RESPONSE" | grep -q '"predictions":\[{'; then
     echo "AI Service Test Passed!"
