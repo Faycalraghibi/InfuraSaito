@@ -23,11 +23,24 @@ func main() {
 	}
 	router := newRouter(apiKey, rateLimiterFromEnv())
 
+	alerts, err := alerterFromEnv()
+	if err != nil {
+		log.Fatalf("Invalid alert configuration: %v", err)
+	}
+	var afterTraining func()
+	if alerts != nil {
+		log.Printf("Alerting on %d rule(s) after each training run", len(alerts.rules))
+		afterTraining = alerts.evaluate
+	}
+
 	if interval := trainIntervalFromEnv(); interval > 0 {
 		log.Printf("Background training every %s", interval)
-		startTrainer(context.Background(), interval)
+		startTrainer(context.Background(), interval, afterTraining)
 	} else {
 		log.Println("Background training disabled (TRAIN_INTERVAL=0)")
+		if alerts != nil {
+			log.Println("Alert rules are configured but never evaluated: they run after background training")
+		}
 	}
 
 	port := os.Getenv("PORT")

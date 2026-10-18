@@ -53,16 +53,19 @@ func trainAll() int {
 	return trained
 }
 
-// startTrainer runs trainAll now and then every interval until ctx is cancelled. Until the
-// first run trains something (e.g. Prometheus has no history yet), it retries every
-// min(interval, firstTrainingRetry).
-func startTrainer(ctx context.Context, interval time.Duration) {
+// startTrainer runs trainAll now and then every interval until ctx is cancelled, calling
+// afterRun (if not nil) after each run. Until the first run trains something (e.g.
+// Prometheus has no history yet), it retries every min(interval, firstTrainingRetry).
+func startTrainer(ctx context.Context, interval time.Duration, afterRun func()) {
 	retry := firstTrainingRetry // read once, before the goroutine starts
 	go func() {
 		trainedOnce := false
 		for {
 			n := trainAll()
 			log.Printf("background training: %d models trained", n)
+			if afterRun != nil {
+				afterRun()
+			}
 			trainedOnce = trainedOnce || n > 0
 			wait := interval
 			if !trainedOnce {
