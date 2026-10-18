@@ -59,6 +59,8 @@ Fetches historical metric data from Prometheus, passes it to the AI service, and
   * `instance` (optional): the node-exporter instance, e.g. `node-exporter:9100`. Required when Prometheus scrapes more than one instance (`400` lists them); an unknown instance returns `404`.
 * **Example**: `curl "http://localhost:8080/api/v1/forecast?metric=cpu&horizon_minutes=60"`
 
+Forecasts come from a model the Go API trains in the background for each metric and instance (every `TRAIN_INTERVAL`), so they start after the model's last training point and include `trained_at`. Until the first training run finishes, the API trains on request instead.
+
 ### `GET /api/v1/metrics/current`
 Returns the current value of a metric.
 Returns `503` when there is no data yet.
@@ -102,6 +104,7 @@ On a cold start (less than about 10 minutes of history), `/forecast` returns the
 | `API_KEY` | unset | When set, `/api/` routes require `X-API-Key` with this value |
 | `RATE_LIMIT_RPS` | `10` | Requests per second allowed across all `/api/` routes; `0` disables limiting |
 | `RATE_LIMIT_BURST` | `20` | Requests allowed in a burst above the steady rate |
+| `TRAIN_INTERVAL` | `15m` | How often the Go API retrains cached models for every metric and instance (Go duration); `0` disables background training |
 
 ## Running Tests
 

@@ -55,8 +55,8 @@ func TestInstancesHandlerListsTargets(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body)
 	}
-	if len(calls.queries) != 1 || calls.queries[0] != nodeUpQuery {
-		t.Errorf("queries = %q, want the up query", calls.queries)
+	if len(calls.snapshot()) != 1 || calls.snapshot()[0] != nodeUpQuery {
+		t.Errorf("queries = %q, want the up query", calls.snapshot())
 	}
 	var body struct {
 		Instances []instanceStatus `json:"instances"`

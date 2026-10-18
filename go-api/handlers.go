@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -53,10 +55,7 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 	instance := r.URL.Query().Get("instance")
 
 	end := time.Now()
-	start := end.Add(-14 * 24 * time.Hour)
-	step := "5m"
-
-	seriesList, err := queryPrometheusRange(def.rangeQuery, start, end, step)
+	seriesList, err := queryPrometheusRange(def.rangeQuery, end.Add(-historyWindow), end, historyStep)
 	if err != nil {
 		http.Error(w, "Failed to fetch historical data: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -125,7 +124,17 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	aiResponseBytes, err := callForecastModel(metric, instance, history, horizonMin)
+	aiResponseBytes, err := forecastFromCache(metric, instance, horizonMin)
+	if err != nil {
+		var statusErr *aiStatusError
+		switch {
+		case errors.Is(err, errNoCachedModel):
+			aiResponseBytes, err = callForecastModel(metric, instance, history, horizonMin)
+		case errors.As(err, &statusErr):
+			log.Printf("cached forecast for %s/%s failed, training on request: %v", metric, instance, err)
+			aiResponseBytes, err = callForecastModel(metric, instance, history, horizonMin)
+		}
+	}
 	if err != nil {
 		http.Error(w, "AI Forecasting failed: "+err.Error(), http.StatusBadGateway)
 		return

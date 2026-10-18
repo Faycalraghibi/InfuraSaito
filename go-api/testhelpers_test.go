@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -68,8 +69,24 @@ func promInstant(v float64) string {
 
 // promCalls records the PromQL queries the fake Prometheus received, in order.
 type promCalls struct {
+	mu      sync.Mutex
 	queries []string
 }
+
+func (c *promCalls) record(query string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.queries = append(c.queries, query)
+}
+
+// snapshot returns a copy of the recorded queries.
+func (c *promCalls) snapshot() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.queries...)
+}
+
+func (c *promCalls) count() int { return len(c.snapshot()) }
 
 // fakePrometheus serves rangeBody on /api/v1/query_range and instantBody on /api/v1/query,
 // and points prometheusURL at it for the test. An empty body makes that endpoint return 500.
@@ -77,7 +94,7 @@ func fakePrometheus(t *testing.T, rangeBody, instantBody string) *promCalls {
 	t.Helper()
 	calls := &promCalls{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls.queries = append(calls.queries, r.URL.Query().Get("query"))
+		calls.record(r.URL.Query().Get("query"))
 		body := map[string]string{
 			"/api/v1/query_range": rangeBody,
 			"/api/v1/query":       instantBody,
@@ -180,7 +197,7 @@ func fakePrometheusByQuery(t *testing.T, rangeBody string, instant map[string]st
 	calls := &promCalls{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query().Get("query")
-		calls.queries = append(calls.queries, query)
+		calls.record(query)
 		body := rangeBody
 		if r.URL.Path == "/api/v1/query" {
 			body = instant[query]
@@ -205,4 +222,73 @@ func getInstances() *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	instancesHandler(rec, req)
 	return rec
+}
+
+// aiReply is a canned response from the fake AI service.
+type aiReply struct {
+	status int
+	body   string
+}
+
+// aiCall is one request the fake AI service received.
+type aiCall struct {
+	path string
+	body map[string]any
+}
+
+// aiCalls records the requests the fake AI service received, in order.
+type aiCalls struct {
+	mu    sync.Mutex
+	calls []aiCall
+}
+
+func (c *aiCalls) record(call aiCall) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.calls = append(c.calls, call)
+}
+
+// snapshot returns a copy of the recorded calls.
+func (c *aiCalls) snapshot() []aiCall {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]aiCall(nil), c.calls...)
+}
+
+func (c *aiCalls) count() int { return len(c.snapshot()) }
+
+func (c *aiCalls) paths() []string {
+	calls := c.snapshot()
+	paths := make([]string, len(calls))
+	for i, call := range calls {
+		paths[i] = call.path
+	}
+	return paths
+}
+
+// fakeAIRoutes answers each path with its reply (unknown paths get 404), records every
+// request, and points aiServiceURL at it.
+func fakeAIRoutes(t *testing.T, routes map[string]aiReply) *aiCalls {
+	t.Helper()
+	recorded := &aiCalls{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		raw, _ := io.ReadAll(r.Body)
+		json.Unmarshal(raw, &body)
+		recorded.record(aiCall{path: r.URL.Path, body: body})
+
+		reply, ok := routes[r.URL.Path]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(reply.status)
+		fmt.Fprint(w, reply.body)
+	}))
+	t.Cleanup(srv.Close)
+
+	old := aiServiceURL
+	aiServiceURL = srv.URL
+	t.Cleanup(func() { aiServiceURL = old })
+	return recorded
 }

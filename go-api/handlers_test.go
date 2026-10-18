@@ -2,8 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -136,8 +140,8 @@ func TestForecastColdStartWithoutCurrentValueReturns503(t *testing.T) {
 	if rec := getForecast(""); rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want 503", rec.Code)
 	}
-	if n := len(calls.queries); n == 0 || calls.queries[n-1] != metrics["cpu"].instantQuery {
-		t.Errorf("queries = %q, want the last to be the cpu instant query", calls.queries)
+	if n := len(calls.snapshot()); n == 0 || calls.snapshot()[n-1] != metrics["cpu"].instantQuery {
+		t.Errorf("queries = %q, want the last to be the cpu instant query", calls.snapshot())
 	}
 }
 
@@ -201,8 +205,8 @@ func TestForecastUsesTheRequestedMetricsRangeQuery(t *testing.T) {
 
 	getForecast("metric=memory")
 
-	if len(calls.queries) == 0 || calls.queries[0] != metrics["memory"].rangeQuery {
-		t.Errorf("queries = %q, want first to be the memory range query", calls.queries)
+	if len(calls.snapshot()) == 0 || calls.snapshot()[0] != metrics["memory"].rangeQuery {
+		t.Errorf("queries = %q, want first to be the memory range query", calls.snapshot())
 	}
 }
 
@@ -223,8 +227,8 @@ func TestCurrentMetricUsesInstantQuery(t *testing.T) {
 			if rec.Code != http.StatusOK {
 				t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body)
 			}
-			if len(calls.queries) != 1 || calls.queries[0] != metrics[tc.metric].instantQuery {
-				t.Errorf("queries = %q, want the %s instant query", calls.queries, tc.metric)
+			if len(calls.snapshot()) != 1 || calls.snapshot()[0] != metrics[tc.metric].instantQuery {
+				t.Errorf("queries = %q, want the %s instant query", calls.snapshot(), tc.metric)
 			}
 			var body struct {
 				Metric string  `json:"metric"`
@@ -248,8 +252,8 @@ func TestCurrentMetricRejectsUnsupportedMetric(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
 	}
-	if len(calls.queries) != 0 {
-		t.Errorf("Prometheus was queried %d times, want 0", len(calls.queries))
+	if len(calls.snapshot()) != 0 {
+		t.Errorf("Prometheus was queried %d times, want 0", len(calls.snapshot()))
 	}
 }
 
@@ -265,8 +269,8 @@ func TestForecastRejectsHorizonAboveSevenDays(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "10080") {
 		t.Errorf("body = %q, want it to state the 10080 limit", rec.Body)
 	}
-	if len(calls.queries) != 0 {
-		t.Errorf("Prometheus was queried %d times, want 0", len(calls.queries))
+	if len(calls.snapshot()) != 0 {
+		t.Errorf("Prometheus was queried %d times, want 0", len(calls.snapshot()))
 	}
 }
 
@@ -425,5 +429,80 @@ func TestCurrentMetricOmitsEmptyInstance(t *testing.T) {
 
 	if strings.Contains(rec.Body.String(), `"instance"`) {
 		t.Errorf("body = %s, want no instance key", rec.Body)
+	}
+}
+
+func TestForecastUsesCachedModel(t *testing.T) {
+	fakePrometheus(t, promRange(1, 2), promInstant(1))
+	ai := fakeAIRoutes(t, map[string]aiReply{"/forecast": {http.StatusOK, `{"cached":true}`}})
+
+	rec := getForecast("metric=memory&horizon_minutes=30")
+
+	if rec.Code != http.StatusOK || rec.Body.String() != `{"cached":true}` {
+		t.Fatalf("got %d %s, want the cached forecast passed through", rec.Code, rec.Body)
+	}
+	if !slices.Equal(ai.paths(), []string{"/forecast"}) {
+		t.Errorf("AI calls = %v, want only /forecast", ai.paths())
+	}
+	if b := ai.snapshot()[0].body; b["metric_name"] != "memory" || b["horizon_minutes"] != float64(30) {
+		t.Errorf("/forecast body = %v, want memory/30", b)
+	}
+}
+
+func TestForecastFallsBackToPredictWithoutCachedModel(t *testing.T) {
+	fakePrometheus(t, promRange(1, 2), promInstant(1))
+	ai := fakeAIRoutes(t, map[string]aiReply{"/predict": {http.StatusOK, `{"fresh":true}`}})
+
+	rec := getForecast("")
+
+	if rec.Code != http.StatusOK || rec.Body.String() != `{"fresh":true}` {
+		t.Fatalf("got %d %s, want the /predict response", rec.Code, rec.Body)
+	}
+	if !slices.Equal(ai.paths(), []string{"/forecast", "/predict"}) {
+		t.Errorf("AI calls = %v, want /forecast then /predict", ai.paths())
+	}
+}
+
+func TestForecastFallsBackToPredictWhenCacheErrors(t *testing.T) {
+	fakePrometheus(t, promRange(1, 2), promInstant(1))
+	fakeAIRoutes(t, map[string]aiReply{
+		"/forecast": {http.StatusInternalServerError, `{"detail":"boom"}`},
+		"/predict":  {http.StatusOK, `{"fresh":true}`},
+	})
+
+	if rec := getForecast(""); rec.Code != http.StatusOK || rec.Body.String() != `{"fresh":true}` {
+		t.Errorf("got %d %s, want the /predict response", rec.Code, rec.Body)
+	}
+}
+
+func TestForecastDoesNotRetryAfterAITimeout(t *testing.T) {
+	fakePrometheus(t, promRange(1, 2), promInstant(1))
+	useClient(t, &aiClient, 50*time.Millisecond)
+	var mu sync.Mutex
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		mu.Unlock()
+		select {
+		case <-time.After(5 * time.Second):
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(srv.Close)
+	old := aiServiceURL
+	aiServiceURL = srv.URL
+	t.Cleanup(func() { aiServiceURL = old })
+
+	rec := getForecast("")
+
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !slices.Equal(paths, []string{"/forecast"}) {
+		t.Errorf("AI calls = %v, want only /forecast (no /predict after a transport error)", paths)
 	}
 }

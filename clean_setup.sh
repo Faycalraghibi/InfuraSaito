@@ -124,6 +124,32 @@ else
     exit 1
 fi
 
+echo "Running AI cache test (train, then forecast from the cached model)..."
+python3 -c '
+import json, sys
+payload = json.load(sys.stdin)
+payload.pop("horizon_minutes")
+payload["instance"] = "integration:9100"
+print(json.dumps(payload))
+' < /tmp/predict_payload.json > /tmp/train_payload.json
+
+TRAIN_RESPONSE=$(curl -s --max-time 120 -X POST -H "Content-Type: application/json" \
+    --data-binary @/tmp/train_payload.json http://localhost:5000/train) || true
+CACHED_RESPONSE=$(curl -s --max-time 30 -w '\n%{time_total}' -X POST -H "Content-Type: application/json" \
+    -d '{"metric_name":"cpu","instance":"integration:9100","horizon_minutes":30}' \
+    http://localhost:5000/forecast) || true
+CACHED_SECONDS=$(echo "$CACHED_RESPONSE" | tail -n 1)
+
+if echo "$CACHED_RESPONSE" | grep -q '"trained_at"' && echo "$CACHED_RESPONSE" | grep -q '"predictions":\[{'; then
+    echo "AI Cache Test Passed! (cached forecast took ${CACHED_SECONDS}s)"
+else
+    echo "AI Cache Test Failed! /train returned:"
+    echo "$TRAIN_RESPONSE"
+    echo "/forecast returned:"
+    echo "$CACHED_RESPONSE"
+    exit 1
+fi
+
 echo "=========================================="
 echo "Setup complete! The system is running."
 echo "Use 'docker compose down -v' to clean up when you're done."

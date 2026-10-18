@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -21,6 +22,13 @@ func main() {
 		log.Println("API_KEY not set, /api/ routes are unauthenticated")
 	}
 	router := newRouter(apiKey, rateLimiterFromEnv())
+
+	if interval := trainIntervalFromEnv(); interval > 0 {
+		log.Printf("Background training every %s", interval)
+		startTrainer(context.Background(), interval)
+	} else {
+		log.Println("Background training disabled (TRAIN_INTERVAL=0)")
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {

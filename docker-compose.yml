@@ -24,7 +24,8 @@ services:
 
   ai-service:
     build: ./ai-service
-    ports: ["5000:5000"]
+    # Internal service: reachable from the host for debugging only.
+    ports: ["127.0.0.1:5000:5000"]
     # Prophet + CmdStan takes a long time to build first time in Docker
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=3)"]
