@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"sort"
 	"testing"
@@ -18,7 +19,7 @@ func TestTrainAllTrainsEverySeriesWithEnoughHistory(t *testing.T) {
 		t.Fatalf("trained = %d, want %d (one per metric for a:9100)", trained, len(metrics))
 	}
 	var names []string
-	for _, call := range ai.calls {
+	for _, call := range ai.snapshot() {
 		if call.path != "/train" || call.body["instance"] != "a:9100" {
 			t.Errorf("call = %s %v, want /train for a:9100", call.path, call.body)
 		}
@@ -51,8 +52,8 @@ func TestTrainAllSkipsPrometheusAndAIFailures(t *testing.T) {
 	if trained := trainAll(); trained != 0 {
 		t.Errorf("trained = %d, want 0 when /train fails", trained)
 	}
-	if len(ai.calls) != len(metrics) {
-		t.Errorf("AI calls = %d, want one attempt per metric (%d)", len(ai.calls), len(metrics))
+	if ai.count() != len(metrics) {
+		t.Errorf("AI calls = %d, want one attempt per metric (%d)", ai.count(), len(metrics))
 	}
 }
 
@@ -60,8 +61,8 @@ func TestTrainAllWithPrometheusDown(t *testing.T) {
 	fakePrometheus(t, "", "")
 	ai := fakeAIRoutes(t, map[string]aiReply{"/train": {http.StatusOK, `{}`}})
 
-	if trained := trainAll(); trained != 0 || len(ai.calls) != 0 {
-		t.Errorf("trained = %d with %d AI calls, want 0 and 0", trained, len(ai.calls))
+	if trained := trainAll(); trained != 0 || ai.count() != 0 {
+		t.Errorf("trained = %d with %d AI calls, want 0 and 0", trained, ai.count())
 	}
 }
 
@@ -83,5 +84,27 @@ func TestTrainIntervalFromEnv(t *testing.T) {
 				t.Errorf("trainIntervalFromEnv() = %s, want %s", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestStartTrainerRetriesUntilFirstSuccess(t *testing.T) {
+	prom := fakePrometheus(t, promRange(), "")
+	fakeAIRoutes(t, map[string]aiReply{"/train": {http.StatusOK, `{}`}})
+	old := firstTrainingRetry
+	firstTrainingRetry = 20 * time.Millisecond
+	t.Cleanup(func() { firstTrainingRetry = old })
+	ctx, cancel := context.WithCancel(context.Background())
+	// Registered last, so it runs first: stop the trainer before the fakes are torn down.
+	t.Cleanup(func() {
+		cancel()
+		time.Sleep(50 * time.Millisecond)
+	})
+
+	startTrainer(ctx, time.Hour)
+	time.Sleep(150 * time.Millisecond)
+	cancel()
+
+	if n := prom.count(); n <= len(metrics) {
+		t.Errorf("Prometheus range queries = %d, want more than %d (a retry after the empty first run)", n, len(metrics))
 	}
 }

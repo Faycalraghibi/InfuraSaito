@@ -34,6 +34,16 @@ func init() {
 // errNoCachedModel means the AI service has no trained model for the metric and instance yet.
 var errNoCachedModel = errors.New("no cached model")
 
+// aiStatusError is a non-success HTTP status from the AI service.
+type aiStatusError struct {
+	status int
+	body   []byte
+}
+
+func (e *aiStatusError) Error() string {
+	return fmt.Sprintf("AI service returned status %d: %s", e.status, e.body)
+}
+
 type TrainRequest struct {
 	MetricName string      `json:"metric_name"`
 	Instance   string      `json:"instance,omitempty"`
@@ -108,5 +118,5 @@ func forecastFromCache(metric, instance string, horizonMin int) ([]byte, error) 
 	case http.StatusNotFound:
 		return nil, errNoCachedModel
 	}
-	return nil, fmt.Errorf("AI service returned status %d: %s", status, body)
+	return nil, &aiStatusError{status: status, body: body}
 }

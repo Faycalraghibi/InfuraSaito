@@ -126,10 +126,14 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 
 	aiResponseBytes, err := forecastFromCache(metric, instance, horizonMin)
 	if err != nil {
-		if !errors.Is(err, errNoCachedModel) {
+		var statusErr *aiStatusError
+		switch {
+		case errors.Is(err, errNoCachedModel):
+			aiResponseBytes, err = callForecastModel(metric, instance, history, horizonMin)
+		case errors.As(err, &statusErr):
 			log.Printf("cached forecast for %s/%s failed, training on request: %v", metric, instance, err)
+			aiResponseBytes, err = callForecastModel(metric, instance, history, horizonMin)
 		}
-		aiResponseBytes, err = callForecastModel(metric, instance, history, horizonMin)
 	}
 	if err != nil {
 		http.Error(w, "AI Forecasting failed: "+err.Error(), http.StatusBadGateway)
