@@ -17,7 +17,7 @@ func TestForecastRejectsUnsupportedMetric(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "cpu, memory") {
+	if !strings.Contains(rec.Body.String(), supportedMetrics()) {
 		t.Errorf("body = %q, want it to list the supported metrics", rec.Body)
 	}
 }

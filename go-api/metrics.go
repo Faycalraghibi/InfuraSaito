@@ -22,6 +22,26 @@ var metrics = map[string]metricDef{
 		rangeQuery:   `100 * (1 - avg by (instance) (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))`,
 		instantQuery: `100 * (1 - avg by (instance) (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))`,
 	},
+	// Percent of the root filesystem in use.
+	"disk": {
+		rangeQuery:   `100 * (1 - avg by (instance) (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}))`,
+		instantQuery: `100 * (1 - avg by (instance) (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}))`,
+	},
+	// Bytes per second received, all interfaces except loopback.
+	"network_rx": {
+		rangeQuery:   `sum by (instance) (rate(node_network_receive_bytes_total{device!="lo"}[5m]))`,
+		instantQuery: `sum by (instance) (rate(node_network_receive_bytes_total{device!="lo"}[1m]))`,
+	},
+	// Bytes per second transmitted, all interfaces except loopback.
+	"network_tx": {
+		rangeQuery:   `sum by (instance) (rate(node_network_transmit_bytes_total{device!="lo"}[5m]))`,
+		instantQuery: `sum by (instance) (rate(node_network_transmit_bytes_total{device!="lo"}[1m]))`,
+	},
+	// 1-minute load average.
+	"load1": {
+		rangeQuery:   `avg by (instance) (node_load1)`,
+		instantQuery: `avg by (instance) (node_load1)`,
+	},
 }
 
 func supportedMetrics() string {
