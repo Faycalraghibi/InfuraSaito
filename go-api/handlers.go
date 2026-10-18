@@ -55,10 +55,7 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 	instance := r.URL.Query().Get("instance")
 
 	end := time.Now()
-	start := end.Add(-14 * 24 * time.Hour)
-	step := "5m"
-
-	seriesList, err := queryPrometheusRange(def.rangeQuery, start, end, step)
+	seriesList, err := queryPrometheusRange(def.rangeQuery, end.Add(-historyWindow), end, historyStep)
 	if err != nil {
 		http.Error(w, "Failed to fetch historical data: "+err.Error(), http.StatusInternalServerError)
 		return
