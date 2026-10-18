@@ -41,7 +41,7 @@ func callForecastModel(metric string, history []DataPoint, horizonMin int) ([]by
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := http.Post(aiServiceURL+"/predict", "application/json", bytes.NewBuffer(jsonData))
+	resp, err := aiClient.Post(aiServiceURL+"/predict", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to call AI service: %w", err)
 	}

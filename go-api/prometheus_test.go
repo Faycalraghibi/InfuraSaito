@@ -80,3 +80,20 @@ func TestQueryPrometheusEmptyResultIsError(t *testing.T) {
 		t.Error("want error for empty instant result, got nil")
 	}
 }
+
+func TestQueryPrometheusRangeTimesOut(t *testing.T) {
+	useClient(t, &promClient, 50*time.Millisecond)
+	old := prometheusURL
+	t.Cleanup(func() { prometheusURL = old })
+	prometheusURL = fakeSlowServer(t, 5*time.Second)
+
+	start := time.Now()
+	_, err := queryPrometheusRange("q", time.Unix(0, 0), time.Unix(600, 0), "5m")
+
+	if err == nil {
+		t.Fatal("want timeout error, got nil")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("took %s, want the 50ms client timeout to apply", elapsed)
+	}
+}

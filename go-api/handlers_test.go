@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestForecastRejectsUnsupportedMetric(t *testing.T) {
@@ -147,6 +148,18 @@ func TestForecastPrometheusError(t *testing.T) {
 func TestForecastAIServiceError(t *testing.T) {
 	fakePrometheus(t, promRange(1, 2), promInstant(1))
 	fakeAIService(t, http.StatusInternalServerError, `{"detail":"boom"}`)
+
+	if rec := getForecast(""); rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+}
+
+func TestForecastAIServiceTimeoutReturns502(t *testing.T) {
+	fakePrometheus(t, promRange(1, 2), promInstant(1))
+	useClient(t, &aiClient, 50*time.Millisecond)
+	old := aiServiceURL
+	aiServiceURL = fakeSlowServer(t, 5*time.Second)
+	t.Cleanup(func() { aiServiceURL = old })
 
 	if rec := getForecast(""); rec.Code != http.StatusBadGateway {
 		t.Errorf("status = %d, want 502", rec.Code)

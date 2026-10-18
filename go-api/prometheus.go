@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"strconv"
 	"time"
@@ -25,7 +24,7 @@ func queryPrometheusRange(query string, start, end time.Time, step string) ([]Da
 	apiQuery := fmt.Sprintf("%s/api/v1/query_range?query=%s&start=%d&end=%d&step=%s",
 		prometheusURL, url.QueryEscape(query), start.Unix(), end.Unix(), step)
 
-	resp, err := http.Get(apiQuery)
+	resp, err := promClient.Get(apiQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +78,7 @@ func queryPrometheusRange(query string, start, end time.Time, step string) ([]Da
 func queryPrometheus(query string) (float64, error) {
 	apiQuery := fmt.Sprintf("%s/api/v1/query?query=%s", prometheusURL, url.QueryEscape(query))
 
-	resp, err := http.Get(apiQuery)
+	resp, err := promClient.Get(apiQuery)
 	if err != nil {
 		return 0, err
 	}
