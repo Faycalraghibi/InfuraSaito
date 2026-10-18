@@ -24,7 +24,9 @@ class DataPoint(BaseModel):
 class PredictRequest(BaseModel):
     metric_name: str = Field(..., description="Name of the metric (e.g. 'cpu')")
     history: list[DataPoint] = Field(..., description="Historical data points")
-    horizon_minutes: int = Field(default=60, description="How far ahead to predict (minutes)")
+    horizon_minutes: int = Field(
+        default=60, gt=0, le=10080, description="How far ahead to predict (minutes, at most 7 days)"
+    )
 
 
 class PredictionPoint(BaseModel):

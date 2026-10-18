@@ -42,3 +42,13 @@ def test_predict_returns_forecast_for_utc_history(client, monkeypatch, history):
     assert body["horizon_minutes"] == 30
     assert len(body["predictions"]) == 6
     assert main.model_has_trained is True
+
+
+@pytest.mark.parametrize("horizon", [0, -5, 10081])
+def test_predict_rejects_out_of_range_horizon(client, history, horizon):
+    resp = client.post(
+        "/predict",
+        json={"metric_name": "cpu", "history": history[:2], "horizon_minutes": horizon},
+    )
+
+    assert resp.status_code == 422

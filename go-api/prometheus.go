@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"strconv"
 	"time"
@@ -25,7 +24,7 @@ func queryPrometheusRange(query string, start, end time.Time, step string) ([]Da
 	apiQuery := fmt.Sprintf("%s/api/v1/query_range?query=%s&start=%d&end=%d&step=%s",
 		prometheusURL, url.QueryEscape(query), start.Unix(), end.Unix(), step)
 
-	resp, err := http.Get(apiQuery)
+	resp, err := promClient.Get(apiQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -55,6 +54,9 @@ func queryPrometheusRange(query string, start, end time.Time, step string) ([]Da
 
 	var dataPoints []DataPoint
 	for _, valArr := range promResp.Data.Result[0].Values {
+		if len(valArr) < 2 {
+			continue // Skip rows without both timestamp and value
+		}
 		// valArr is [timestamp_float, "value_string"]
 		tsFloat, ok1 := valArr[0].(float64)
 		valStr, ok2 := valArr[1].(string)
@@ -79,7 +81,7 @@ func queryPrometheusRange(query string, start, end time.Time, step string) ([]Da
 func queryPrometheus(query string) (float64, error) {
 	apiQuery := fmt.Sprintf("%s/api/v1/query?query=%s", prometheusURL, url.QueryEscape(query))
 
-	resp, err := http.Get(apiQuery)
+	resp, err := promClient.Get(apiQuery)
 	if err != nil {
 		return 0, err
 	}
@@ -104,7 +106,11 @@ func queryPrometheus(query string) (float64, error) {
 	}
 
 	// Value is typically [timestamp, "string_value"]
-	valStr, ok := promResp.Data.Result[0].Value[1].(string)
+	value := promResp.Data.Result[0].Value
+	if len(value) < 2 {
+		return 0, fmt.Errorf("unexpected value format from Prometheus")
+	}
+	valStr, ok := value[1].(string)
 	if !ok {
 		return 0, fmt.Errorf("unexpected value format from Prometheus")
 	}

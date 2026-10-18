@@ -2,18 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
-	"sort"
 	"strconv"
-	"strings"
 	"time"
 )
-
-// metricQueries maps the supported `metric` values to their PromQL range queries.
-var metricQueries = map[string]string{
-	"cpu":    `100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)`,
-	"memory": `100 * (1 - avg by (instance) (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))`,
-}
 
 // exporterUpQuery checks that the node-exporter scrape target is healthy.
 const exporterUpQuery = `max(up{job="node"})`
@@ -33,30 +26,23 @@ type fallbackResponse struct {
 	Predictions    []forecastPoint `json:"predictions"`
 }
 
-func supportedMetrics() string {
-	names := make([]string, 0, len(metricQueries))
-	for name := range metricQueries {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return strings.Join(names, ", ")
-}
+// maxHorizonMinutes caps forecasts at 7 days; longer horizons are not meaningful for
+// 14 days of history and would make Prophet build very large frames.
+const maxHorizonMinutes = 7 * 24 * 60
 
 func forecastHandler(w http.ResponseWriter, r *http.Request) {
-	metric := r.URL.Query().Get("metric")
-	if metric == "" {
-		metric = "cpu"
-	}
-
-	query, ok := metricQueries[metric]
+	metric, def, ok := resolveMetric(w, r)
 	if !ok {
-		http.Error(w, "Unsupported metric; supported: "+supportedMetrics(), http.StatusBadRequest)
 		return
 	}
 
 	horizonStr := r.URL.Query().Get("horizon_minutes")
 	horizonMin := 60
 	if h, err := strconv.Atoi(horizonStr); err == nil && h > 0 {
+		if h > maxHorizonMinutes {
+			http.Error(w, fmt.Sprintf("horizon_minutes must be at most %d", maxHorizonMinutes), http.StatusBadRequest)
+			return
+		}
 		horizonMin = h
 	}
 
@@ -64,7 +50,7 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 	start := end.Add(-14 * 24 * time.Hour)
 	step := "5m"
 
-	history, err := queryPrometheusRange(query, start, end, step)
+	history, err := queryPrometheusRange(def.rangeQuery, start, end, step)
 	if err != nil {
 		http.Error(w, "Failed to fetch historical data: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -102,16 +88,19 @@ func forecastHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func currentMetricsHandler(w http.ResponseWriter, r *http.Request) {
-	query := `100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100)`
+	metric, def, ok := resolveMetric(w, r)
+	if !ok {
+		return
+	}
 
-	val, err := queryPrometheus(query)
+	val, err := queryPrometheus(def.instantQuery)
 	if err != nil {
 		http.Error(w, "Failed to fetch metrics: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	response := map[string]interface{}{
-		"metric": "cpu",
+		"metric": metric,
 		"value":  val,
 	}
 
